@@ -1,49 +1,60 @@
-import Web3 from "web3";
-import remittanceArtifact from "../../build/contracts/Remittance.json";
+const Web3 = require("web3");
+const truffleContract = require("truffle-contract");
+const $ = require("jquery");
+const remittanceJson = require("../../build/contracts/Remittance.json");
 
 const App = {
   web3: null,
   account: null,
   meta: null,
+  wallets: [],
+  remittance: truffleContract(remittanceJson),
 
   start: async function () {
     const { web3 } = this;
-
     try {
-      // get contract instance
-      const networkId = await web3.eth.net.getId();
-      const deployedNetwork = remittanceArtifact.networks[networkId];
-      this.meta = new web3.eth.Contract(remittanceArtifact.abi, deployedNetwork.address);
-
-      // get accounts
-      const accounts = await web3.eth.getAccounts();
-      this.account = accounts[0];
-
-      this.refreshBalance();
+      this.remittance.setProvider(web3.currentProvider);
+      this.setUpApp();
+      this.hello();
+      this.showContractBalance();
     } catch (error) {
+      console.log(error);
       console.error("Could not connect to contract or chain.");
     }
   },
 
-  refreshBalance: async function () {
-    const { getBalance } = this.meta.methods;
-    const balance = await getBalance(this.account).call();
+  hello: async function () {
+    const deployed = await this.remittance.deployed();
+    const num = await deployed.hello.call();
+    this.setStatus(num.toString());
+  },
 
-    const balanceElement = document.getElementsByClassName("balance")[0];
+  showContractBalance: async function () {
+    const deployed = await this.remittance.deployed();
+    const balance = await this.web3.eth.getBalance(deployed.address);
+    const balanceElement = document.getElementById("contractBalance");
     balanceElement.innerHTML = balance;
   },
 
-  sendCoin: async function () {
-    const amount = parseInt(document.getElementById("amount").value);
-    const receiver = document.getElementById("receiver").value;
+  setUpApp: function () {
+    const { web3, wallets } = this;
 
-    this.setStatus("Initiating transaction... (please wait)");
-
-    const { sendCoin } = this.meta.methods;
-    await sendCoin(receiver, amount).send({ from: this.account });
-
-    this.setStatus("Transaction complete!");
-    this.refreshBalance();
+    web3.eth
+      .getAccounts()
+      .then((accounts) => {
+        if (accounts.length == 0) {
+          throw new Error("No accounts with which to transact");
+        }
+        //account = accounts[0];
+        return accounts;
+      })
+      .then((accountList) => {
+        for (i = 0; i < 10; i++) {
+          let address = accountList[i];
+          wallets.push({ i, address });
+        }
+      })
+      .catch(console.error);
   },
 
   setStatus: function (message) {
@@ -60,8 +71,7 @@ window.addEventListener("load", function () {
     App.web3 = new Web3(window.ethereum);
     window.ethereum.enable(); // get permission to access accounts
   } else {
-    console.warn("No web3 detected. Falling back to http://127.0.0.1:8545. You should remove this fallback when you deploy live");
-    // fallback - use your fallback strategy (local node / hosted node + in-dapp id mgmt / fail)
+    //Fall back local provider
     App.web3 = new Web3(new Web3.providers.HttpProvider("http://127.0.0.1:8545"));
   }
 
