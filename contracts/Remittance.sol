@@ -8,6 +8,6 @@ contract Remittance {
     }
 
     function hello() public pure returns(uint random) {
-        return 25645;
+        return 42;
     }
 }
