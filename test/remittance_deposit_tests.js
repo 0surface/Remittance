@@ -31,6 +31,14 @@ contract("Remittance", (accounts) => {
     );
   });
 
+  it("should revert if given null hash", async () => {
+    const nullHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    await truffleAssert.reverts(
+      remittance.contract.methods.deposit(nullHash, nullAddress).send({ from: sender, value: 10 }),
+      "Invalid hash value"
+    );
+  });
+
   it("should revert if sent amount is 0", async () => {
     await truffleAssert.reverts(
       remittance.contract.methods.deposit(_randomHash, handler).send({ from: sender, value: 0 }),
@@ -40,17 +48,14 @@ contract("Remittance", (accounts) => {
 
   it("should record sent amount as owed in storage", async () => {
     const _sent = 20;
-
-    const weiBeforeDeposit = await remittance.contract.methods.getRemitAmount(handler).call();
-    await remittance.contract.methods.deposit(_randomHash, handler).send({ from: sender, value: _sent });
-    const weiAfterDeposit = await remittance.contract.methods.getRemitAmount(handler).call();
-
-    const beforeBalance = new BN(weiBeforeDeposit);
-    const afterBalance = new BN(weiAfterDeposit);
-
-    const actual = afterBalance.sub(beforeBalance);
     const expected = new BN(_sent);
 
-    expect(expected).to.be.a.bignumber.that.equals(actual);
+    const remitBefore = await remittance.ledger.call(handler);
+    await remittance.contract.methods.deposit(_randomHash, handler).send({ from: sender, value: _sent });
+    const remitAfter = await remittance.ledger.call(handler);
+
+    const actual = remitAfter.amount.sub(remitBefore.amount);
+
+    expect(actual).to.be.a.bignumber.that.equals(expected);
   });
 });
