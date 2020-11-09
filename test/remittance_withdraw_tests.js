@@ -23,7 +23,7 @@ contract("Remittance", (accounts) => {
   const randomAddress = accounts[3];
   const nullHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
-  it("should NOT double successful withdrawals", async () => {
+  it("should NOT allow double successful withdrawals", async () => {
     //Arrange
     const handlerPassword = "123456789";
     const receiverPassword = "abcdefghi";
@@ -87,6 +87,45 @@ contract("Remittance", (accounts) => {
     assert.notEqual(remitBeforeWithdrawal.amount, remitAfterWithdrawal.amount, "ledger amount not cleared after withdrawl");
     assert.strictEqual("0", remitAfterWithdrawal.amount.toString(10), "ledger amount sert to zero after withdrawl");
     assert.strictEqual(remitAfterWithdrawal.secret, nullHash, "ledger secret not cleared after withdrawl");
+  });
+
+  it("should emit an event with correct arguments", async () => {
+    const handlerPassword = "424242";
+    const receiverPassword = "abcabcabc";
+
+    const expectedHandlerKey = web3.utils.soliditySha3(
+      { type: "address", value: handler },
+      { type: "string", value: handlerPassword }
+    );
+    const expectedHashedSecret = web3.utils.soliditySha3(
+      { type: "bytes32", value: expectedHandlerKey },
+      { type: "string", value: receiverPassword }
+    );
+
+    const secrets = await remittance.contract.methods.generateSecret(handler, handlerPassword, receiverPassword).call();
+
+    assert.strictEqual(secrets.handlerKey, expectedHandlerKey, "did not generate expected handler key");
+    assert.strictEqual(secrets.hashedSecret, expectedHashedSecret, "did not generate expected hashed secret");
+
+    const depositTxObj = await remittance.contract.methods
+      .deposit(secrets.hashedSecret, secrets.handlerKey)
+      .send({ from: sender, value: _sent });
+
+    assert.isDefined(depositTxObj, "deposit function did not get mined/execute");
+    const withdrawTxObj = await remittance.contract.methods
+      .withdraw(handlerPassword, receiverPassword)
+      .send({ from: handler, value: 0 });
+
+    const eventObj = withdrawTxObj.events.LogWithdrawal;
+    assert.isDefined(eventObj, "event not emitted");
+    assert.isTrue(eventObj.event === "LogWithdrawal", "correct event not emitted");
+
+    const eventArgs = eventObj.returnValues;
+
+    assert.isTrue(eventArgs.withdrawer === handler, "LogWithdrawn event withdrawer argument is incorrect");
+    assert.isTrue(eventArgs.withdrawn === _sent.toString(), "LogWithdrawn event withdrawn argument is incorrect");
+    assert.isTrue(eventArgs.handlerPassword === handlerPassword, "LogWithdrawn event handlerPassword argument is incorrect");
+    assert.isTrue(eventArgs.receiverPassword === receiverPassword, "LogWithdrawn event receiverPassword argument is incorrect");
   });
 
   beforeEach("deploy a fresh contract, generate secrets and deposit money", async () => {

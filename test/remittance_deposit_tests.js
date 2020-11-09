@@ -33,6 +33,23 @@ contract("Remittance", (accounts) => {
     );
   });
 
+  it("should emit an event  with correct arguments", async () => {
+    const _deposited = 25;
+    const depositTxObj = await remittance.contract.methods
+      .deposit(_randomSecretHash, _randomHandlerKey)
+      .send({ from: sender, value: _deposited });
+
+    const eventObj = depositTxObj.events.LogDeposited;
+    assert.isDefined(eventObj, "event not emitted");
+    assert.isTrue(eventObj.event === "LogDeposited", "correct event not emitted");
+
+    const eventArgs = eventObj.returnValues;
+    assert.isTrue(eventArgs.depositor === sender, "LogDeposited event depositor argument is incorrect");
+    assert.isTrue(eventArgs.deposited === _deposited.toString(), "LogDeposited event deposited argument is incorrect");
+    assert.isTrue(eventArgs.secret === _randomSecretHash, "LogDeposited event secret argument is incorrect");
+    assert.isTrue(eventArgs.key === _randomHandlerKey, "LogDeposited event key argument is incorrect");
+  });
+
   it("should revert if given null handler key", async () => {
     const nullHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
     await truffleAssert.reverts(

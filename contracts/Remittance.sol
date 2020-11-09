@@ -14,6 +14,9 @@ contract Remittance {
 
     mapping(bytes32 => Remit) public ledger;
 
+    event LogDeposited(address indexed depositor, uint deposited, bytes32 secret, bytes32 key);
+    event LogWithdrawal(address indexed withdrawer, uint withdrawn, string handlerPassword, string receiverPassword);
+
     modifier passwordsAreValid(string memory handlerPassword, string memory receiverPassword) {
         require(bytes(handlerPassword).length > 0,"handlerPassword can not be empty");
         require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
@@ -42,7 +45,7 @@ contract Remittance {
     }    
 
     /*
-     *@dev generate keccak256 hash from address and string
+     *@dev generates keccak256 hash from address and string
      */
     function generateHandlerKey(address handlerAddress, string memory handlerPassword) private pure returns (bytes32) {
         require(bytes(handlerPassword).length > 0,"handler password can not be empty");
@@ -68,6 +71,7 @@ contract Remittance {
         //SSTORE
         Remit memory newEntry = Remit({secret : secretHash, amount : msg.value});
         ledger[handlerKey] = newEntry;
+        emit LogDeposited(msg.sender, msg.value, secretHash, handlerKey);
     }
 
     /*
@@ -93,6 +97,7 @@ contract Remittance {
         ledger[_ledgerKey].secret = "";              
 
         (bool success, ) = (msg.sender).call{value: _amount}("");        
-        require(success, "withdraw failed");        
+        require(success, "withdraw failed");     
+        emit LogWithdrawal(msg.sender,_amount, handlerPassword, receiverPassword);
     }
 }
