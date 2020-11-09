@@ -12,7 +12,7 @@ contract Remittance {
         uint amount;
     }
 
-    mapping(address => Remit) public ledger;
+    mapping(bytes32 => Remit) public ledger;
 
     modifier passwordsAreValid(string memory handlerPassword, string memory receiverPassword) {
         require(bytes(handlerPassword).length > 0,"handlerPassword can not be empty");
@@ -28,45 +28,69 @@ contract Remittance {
 
     /*
     @dev generates keccak256 hash from params
-    @param secret1 = string value
-    @param secret2 = string value
+    @param non null address
+    @param non-empty string values
      */
-    function generateSecret(string memory handlerPassword, string memory receiverPassword) 
+    function generateSecret(address handlerAddress, string memory handlerPassword, string memory receiverPassword) 
         passwordsAreValid(handlerPassword,receiverPassword) 
         pure public  
-        returns(bytes32 hashedSecret) 
-    {
-        return keccak256(abi.encodePacked(handlerPassword, receiverPassword));
+        returns(bytes32 hashedSecret, bytes32 handlerKey) 
+    {        
+        bytes32 _handlerKey = generateHandlerKey(handlerAddress,handlerPassword);            
+
+        return (keccak256(abi.encodePacked(_handlerKey, receiverPassword)), _handlerKey);
     }    
+
+    /*
+     *@dev generate keccak256 hash from address and string
+     */
+    function generateHandlerKey(address handlerAddress, string memory handlerPassword) private pure returns (bytes32) {
+        require(bytes(handlerPassword).length > 0,"handler password can not be empty");
+        require(handlerAddress != address(0), "handler address can not be null");
+        return keccak256(abi.encodePacked(handlerAddress, handlerPassword));
+    }
 
     /*
     @dev deposit money into contract ledger
     @param handler = the address of the intermediary which performs ether to other currency exhange
     @param hashedSecret = keccak256 hash
     */
-    function deposit(bytes32 secretHash, address handler) public payable {
+    function deposit(bytes32 secretHash, bytes32 handlerKey) public payable {
         require(msg.value != 0, "Invalid minimum amount");  
-        require(secretHash.length == 32 && secretHash != bytes32(""), "Invalid hash value");
-        require(handler != address(0), "Can not deposit into null address");
+        require(secretHash.length == 32 && secretHash != bytes32(""), "Invalid secretHash value");
+        require(handlerKey.length == 32 && handlerKey != bytes32(""), "Invalid handlerKey value");
+        require(secretHash != handlerKey, "secretHash and handlerKey can not be identical");
+
+        //SLOAD
+        Remit memory existing = ledger[handlerKey];
+        require(existing.amount == 0, "Invalid, handler Key has active deposit");
         
-        Remit memory tmp = Remit({secret : secretHash, amount : msg.value});
-        ledger[handler] = tmp;
+        //SSTORE
+        Remit memory newEntry = Remit({secret : secretHash, amount : msg.value});
+        ledger[handlerKey] = newEntry;
     }
 
     /*
     @dev transfer value to caller
-    @param 
+    @params string passwords 
      */
-    function withdraw(string memory handlerPassword, string memory receiverPassword)  external {        
-        Remit memory owed =  ledger[msg.sender];
+    function withdraw(string memory handlerPassword, string memory receiverPassword) 
+        passwordsAreValid(handlerPassword,receiverPassword) 
+        external 
+    {   
+        (bytes32 _withdrawSecret, bytes32 _ledgerKey) = generateSecret(msg.sender, handlerPassword, receiverPassword);
+        
+        //SLOAD
+        Remit memory owed =  ledger[_ledgerKey];
         uint _amount = owed.amount;
         bytes32 _secret = owed.secret;
-
         require(_amount != 0 && _secret != "", "Sender is not owed a withdrawal");
-        require(generateSecret(handlerPassword, receiverPassword) == _secret, "Incorrect passwords");
+        
+        require(_withdrawSecret == _secret, "Passwords are incorrect");
 
-        ledger[msg.sender].amount = 0;
-        ledger[msg.sender].secret = "";              
+        //SSTORE
+        ledger[_ledgerKey].amount = 0;
+        ledger[_ledgerKey].secret = "";              
 
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "withdraw failed");        
