@@ -30,9 +30,6 @@ contract("Remittance", (accounts) => {
     beforeEach("deploy a fresh contract, generate secrets and deposit money", async () => {
       //Arrange
       remittance = await Remittance.new({ from: deployer });
-      // const expkey = web3.utils.soliditySha3({ type: "string", value: receiverPassword }, { type: "address", value: remitter });
-      // const expW = web3.utils.soliditySha3({ type: "address", value: remitter }, { type: "string", value: receiverPassword });
-      // const expRefund = web3.utils.soliditySha3({ type: "address", value: sender }, { type: "string", value: receiverPassword });
 
       //Act - generateSecret
       const secrets = await remittance.contract.methods
