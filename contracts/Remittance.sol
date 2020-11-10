@@ -23,7 +23,6 @@ contract Remittance is Pausable {
     modifier remitInputsAreValid(address remitterAddress, string memory receiverPassword) {
         require(remitterAddress != address(0), "remitter address can not be null");
         require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        require(keccak256(abi.encodePacked(remitterAddress)) != keccak256(abi.encodePacked(receiverPassword)), "passwords can not be the same as address");
         _;
     }
 

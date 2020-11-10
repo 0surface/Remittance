@@ -52,15 +52,6 @@ contract("Remittance", (accounts) => {
       );
     });
 
-    it("should revert if given address string as password", async () => {
-      console.log("remitter:", remitter);
-      console.log("remitter.toString(): ", remitter.toString());
-      await truffleAssert.reverts(
-        remittance.contract.methods.generateSecret(remitter, remitter.toString()).call({ from: sender }),
-        "password can not be the same as address"
-      );
-    });
-
     it("should revert if given null address", async () => {
       await truffleAssert.reverts(
         remittance.contract.methods.generateSecret(nullAddress, "abcdef").call({ from: sender }),
