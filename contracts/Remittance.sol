@@ -20,9 +20,17 @@ contract Remittance is Pausable {
 
     mapping(bytes32 => Remit) public ledger;
 
+    modifier remitInputsAreValid(address remitterAddress, string memory receiverPassword) {
+        require(remitterAddress != address(0), "remitter address can not be null");
+        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
+        require(keccak256(abi.encodePacked(remitterAddress)) != keccak256(abi.encodePacked(receiverPassword)), "passwords can not be the same as address");
+        _;
+    }
+
     event LogDeposited(address indexed depositor, uint deposited, bytes32 secret, bytes32 key, bytes32 refundHash );
     event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword);
     event LogLockDurationSet(address indexed owner, uint oldDuration, uint newDuration);
+    event LogRefund(address indexed refundee, uint _amount, address  remitterAddress,string receiverPassword);
 
     constructor() { }
 
@@ -43,15 +51,12 @@ contract Remittance is Pausable {
     @param non null address
     @param non-empty string values
      */
-    function generateSecret(address remitterAddress, string memory remitterPassword, string memory receiverPassword) 
-        view public  
+    function generateSecret(address remitterAddress, string memory receiverPassword) 
+        view public 
+        whenNotPaused
+        remitInputsAreValid(remitterAddress, receiverPassword)
         returns(bytes32 withdrawSecret, bytes32 remitKey, bytes32 refundSecret) 
-    {        
-        require(remitterAddress != address(0), "remitter address can not be null");
-        require(bytes(remitterPassword).length > 0,"remitterPassword can not be empty");
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        require(keccak256(abi.encodePacked(remitterPassword)) != keccak256(abi.encodePacked(receiverPassword)), "passwords can not be the same");
-
+    {   
         return (generateSecretHash(remitterAddress, receiverPassword),
                 generateKeyHash(receiverPassword, remitterAddress),
                 generateSecretHash(msg.sender, receiverPassword));
@@ -60,7 +65,7 @@ contract Remittance is Pausable {
     /*
      *@dev generates keccak256 hash from string and address
      */
-    function generateKeyHash( string memory _password, address _address) 
+    function generateKeyHash(string memory _password, address _address) 
         pure internal returns (bytes32 keyHash){
         return keccak256(abi.encodePacked(_password, _address));
     }
@@ -78,7 +83,7 @@ contract Remittance is Pausable {
      *@params bytes32
      */
     function deposit(bytes32 withdrawSecret, bytes32 remitKey, bytes32 refundSecret) public whenNotPaused payable {
-        require(msg.value != 0, "Invalid minimum amount");  
+        require(msg.value > 0, "Invalid minimum amount");  
         require(withdrawSecret.length == 32 && withdrawSecret != bytes32(""), "Invalid withdrawSecret value");
         require(remitKey.length == 32 && remitKey != bytes32(""), "Invalid remitKey value");
         require(refundSecret.length == 32 && refundSecret != bytes32(""), "Invalid refundSecret value");
@@ -115,7 +120,7 @@ contract Remittance is Pausable {
         uint _amount = entry.amount;
 
         require(_amount != 0, "Caller is not owed a withdrawal");
-        require(generateSecretHash(msg.sender, receiverPassword) == entry.withdrawHash, "Passwords are incorrect");
+        require(generateSecretHash(msg.sender, receiverPassword) == entry.withdrawHash, "receiverPassword is incorrect");
 
         //SSTORE
         ledger[_ledgerKey].amount = 0;
@@ -126,5 +131,31 @@ contract Remittance is Pausable {
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "withdraw failed");     
         emit LogWithdrawal(msg.sender,_amount, receiverPassword);
+    }
+
+    function refund(address remitterAddress, string memory receiverPassword)
+        whenNotPaused
+        remitInputsAreValid(remitterAddress, receiverPassword)
+        external 
+    {        
+        bytes32 _ledgerKey = generateKeyHash(receiverPassword, remitterAddress);
+         
+        //SLOAD
+        Remit memory entry = ledger[_ledgerKey];
+        uint _amount = entry.amount;
+
+        require(_amount != 0, "Caller is not owed a refund");
+        require(generateSecretHash(msg.sender, receiverPassword) == entry.refundHash, "receiverPassword is incorrect");
+        require(block.timestamp > entry.deadline, "deposit is not yet eligible for refund");
+
+        //SSTORE
+        ledger[_ledgerKey].amount = 0;
+        ledger[_ledgerKey].refundHash = "";              
+        ledger[_ledgerKey].withdrawHash = ""; 
+        ledger[_ledgerKey].deadline = 0; 
+
+        (bool success, ) = (msg.sender).call{value: _amount}("");        
+        require(success, "refund failed");
+        emit LogRefund(msg.sender, _amount, remitterAddress, receiverPassword);
     }
 }
