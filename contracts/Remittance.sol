@@ -9,18 +9,34 @@ import "./Pausable.sol";
  */
 contract Remittance is Pausable {
 
+    uint public lockDuration = 432000 seconds;  //5 days
+
     struct Remit {
         bytes32 withdrawHash;
         bytes32 refundHash;
-        uint amount;        
+        uint amount;
+        uint deadline; 
     }
 
     mapping(bytes32 => Remit) public ledger;
 
     event LogDeposited(address indexed depositor, uint deposited, bytes32 secret, bytes32 key, bytes32 refundHash );
     event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword);
+    event LogLockDurationSet(address indexed owner, uint oldDuration, uint newDuration);
 
     constructor() { }
+
+    /*
+    *@dev set the lockDuration value
+    *@param uint
+    */
+    function setLockDuration(uint newDuration) onlyOwner whenNotPaused public {
+        require(newDuration > 0, "Invalid minumum lock duration");
+        require(newDuration < 3153600000, "Invalid maximum lock duration"); //100 years
+        uint _oldValue = lockDuration;
+        lockDuration = newDuration;
+        emit LogLockDurationSet(msg.sender, _oldValue, newDuration);
+    }        
 
     /*
     @dev generates keccak256 hash from params
@@ -69,11 +85,16 @@ contract Remittance is Pausable {
         require(withdrawSecret != refundSecret, "withdrawSecret and refundSecret can not be identical");
 
         //SLOAD
-        Remit memory existing = ledger[remitKey];
-        require(existing.amount == 0, "Invalid, remit Key has an active deposit");
+        require(ledger[remitKey].amount == 0, "Invalid, remit Key has an active deposit");
         
+        Remit memory newEntry = Remit({ 
+            withdrawHash: withdrawSecret, 
+            refundHash: refundSecret, 
+            amount: msg.value, 
+            deadline: (block.timestamp + lockDuration) 
+        });
+
         //SSTORE
-        Remit memory newEntry = Remit({ withdrawHash: withdrawSecret, refundHash: refundSecret, amount: msg.value });
         ledger[remitKey] = newEntry;
         emit LogDeposited(msg.sender, msg.value, withdrawSecret, remitKey, refundSecret);
     }
@@ -100,6 +121,7 @@ contract Remittance is Pausable {
         ledger[_ledgerKey].amount = 0;
         ledger[_ledgerKey].refundHash = "";              
         ledger[_ledgerKey].withdrawHash = ""; 
+        ledger[_ledgerKey].deadline = 0; 
 
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "withdraw failed");     
