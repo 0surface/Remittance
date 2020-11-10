@@ -65,7 +65,7 @@ contract Remittance is Pausable {
      *@dev generates keccak256 hash from string and address
      */
     function generateKeyHash(string memory _password, address _address) 
-        pure internal returns (bytes32 keyHash){
+        pure private returns (bytes32 keyHash){
         return keccak256(abi.encodePacked(_password, _address));
     }
 
@@ -73,7 +73,7 @@ contract Remittance is Pausable {
      *@dev generates keccak256 hash from address and string
      */
     function generateSecretHash(address _address, string memory _password) 
-        pure internal returns (bytes32 secretHash) {
+        pure private returns (bytes32 secretHash) {
         return keccak256(abi.encodePacked(_address, _password));
     }
 
