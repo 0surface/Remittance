@@ -22,10 +22,83 @@ const App = {
   },
 
   //CORE METHODS
-  deposit: async function () {},
+  deposit: async function () {
+    //Validate inputs
+    if (this.validateDeposit()) return;
 
-  validateDeposit: async function () {},
+    const gas = 4000000;
+    const _depositor = $("#depositSender").val();
+    const _remitter = $("#depositRemitter").val();
+    const _password = $("#depositPassword").val();
+    const _amount = $("#depositAmount").val();
 
+    const deployed = await this.remittance.deployed();
+    const { deposit, generateSecret, ledger } = deployed;
+
+    const depositTxParamsObj = {
+      from: _depositor,
+      value: this.web3.utils.toWei(_amount, "ether"),
+      gas: gas,
+    };
+
+    //Generate secrets
+    const secretTxObj = await generateSecret(_remitter, _password, { from: _depositor });
+    const { withdrawSecret, remitKey, refundSecret } = secretTxObj;
+
+    try {
+      //Simulate transaction
+      await deposit.call(withdrawSecret, remitKey, refundSecret, depositTxParamsObj);
+    } catch (err) {
+      const errMessage = "The Deposit transaction will fail. Check your inputs and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    //send deposit transaction
+    const txObj = await deposit(withdrawSecret, remitKey, refundSecret, depositTxParamsObj).on("transactionHash", (txHash) =>
+      $("#status").html(`Deposit transaction on the way : [ ${txHash} ]`)
+    );
+
+    //clear input elems
+    $("#depositSender").html("");
+    $("#depositRemitter").html("");
+    $("#depositPassword").html("");
+    $("#depositAmount").html("");
+
+    //UpdateUI & balances table
+    this.updateUI(txObj, "Deposit");
+  },
+
+  validateDeposit: async function () {
+    $("#depositSenderError").html("");
+    $("#depositRemitterError").html("");
+    $("#depositPasswordError").html("");
+    $("#depositAmountError").html("");
+    let hasError = false;
+
+    if (!$("#depositSender").val()) {
+      $("#depositSenderError").html("Depositor address is required").css("color", "red");
+      hasError = true;
+    }
+    if (!$("#depositRemitter").val()) {
+      $("#depositRemitterError").html("Remitter address is required");
+      hasError = true;
+    }
+    if (!$("#depositPassword").val()) {
+      $("#depositPasswordError").html("Receiver's password is required");
+      hasError = true;
+    }
+    if (!$("#depositAmount").val() || $("#depositAmount").val() == 0) {
+      $("#depositAmountError").html("Deposit Amount is required");
+      hasError = true;
+    }
+    if ($("#depositAmount").val() == 0) {
+      $("#depositAmountError").html("Can not deposit zero");
+      hasError = true;
+    }
+    return !hasError;
+  },
   validateWithdraw: async function () {},
 
   withdraw: async function () {
