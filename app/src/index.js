@@ -148,7 +148,57 @@ const App = {
     $("#withdrawPassword").html("");
   },
 
-  refund: async function () {},
+  refund: async function () {
+    if (await this.validateRefund()) return;
+    const _depositorAddress = $("#refundDepositor").val();
+    const _remitterAddress = $("#refundRemitter").val();
+    const _password = $("#refundPassword").val();
+
+    const deployed = await this.remittance.deployed();
+    const { refund } = deployed;
+    const refundTxParamsObj = { from: _depositorAddress };
+
+    try {
+      await refund.call(_remitterAddress, _password, refundTxParamsObj);
+    } catch (err) {
+      const errMessage = "Your Refund transaction will fail. Check your inputs and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    const txObj = await refund(_remitterAddress, _password, refundTxParamsObj).on("transactionHash", (txHash) =>
+      $("#status").html(`Refund transaction on the way : [ ${txHash} ]`)
+    );
+
+    await this.updateUI(txObj, "Refund");
+    $("#refundRemitter").html("");
+    $("#refundPassword").html("");
+  },
+
+  validateRefund: async function () {
+    $("#refundDepositorError").html("");
+    $("#refundRemitterError").html("");
+    $("#refundPasswordError").html("");
+    let hasError = false;
+
+    if (!$("#refundDepositor").val()) {
+      $("#refundDepositorError").html("Depsositor address is required");
+      hasError = true;
+    }
+
+    if (!$("#refundRemitter").val()) {
+      $("#refundRemitterError").html("Remitter address is required");
+      hasError = true;
+    }
+
+    if (!$("#refundPassword").val()) {
+      $("#refundPasswordError").html("Refund address is required");
+      hasError = true;
+    }
+
+    return hasError;
+  },
 
   setLockDuration: async function () {
     const lockDurationAmountElem = document.getElementById("lockDurationAmount");
