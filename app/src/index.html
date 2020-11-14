@@ -26,20 +26,20 @@
 
   <section class="container-felx mx-3">
     <section class="row bg-light statusBar">
-        <div class="col-3">
+        <div class="col-sm-3">
           <span class="badge badge-pill badge-secondary statusText">Balance: 
             <span id ="contractBalance"></span>
           </span>
         </div>    
-        <div class="col-3">
+        <div class="col-sm-3">
           <span class="badge badge-pill badge-secondary statusText">Refund Lock Period: 
             <span id ="lockupDuration"></span>            
           </span>
         </div>        
     </section>
-    <section class="row bg-light" style="align-content:center;">
-      <div class="col mt-2 mb-2" style="align-items: center;">
-        <div id="status" class="alert alert-primary" role="alert">            
+    <section class="row bg-light" style="align-content:center;" id="statusSection">
+      <div class="col-sm-12 mt-2 mb-2" style="align-items: center;">
+        <div id="status" class="alert alert-success" role="alert">            
         </div>
       </div>  
     </section>
@@ -134,11 +134,11 @@
             <section class="row"  style="width:80%">
               <hr>
               <div class="col-4">
-                <button class="btn btn-md btn-block btn-danger" id="btnPauseContract">STOP!</button>
+                <button class="btn btn-md btn-block btn-danger" id="btnPauseContract" onclick="App.pauseContract()">PAUSE!</button>
               </div>
               <hr>
               <div class="col-4">
-                <button class="btn btn-md btn-block btn-success" id="btnUnpauseContract">RESUME</button>
+                <button class="btn btn-md btn-block btn-success" id="btnUnpauseContract" onclick="App.resumeContract()">RESUME</button>
               </div>
             </section>
           </div>

@@ -201,30 +201,88 @@ const App = {
   },
 
   setLockDuration: async function () {
-    const lockDurationAmountElem = document.getElementById("lockDurationAmount");
+    if (await this.validateLockDuration()) return;
+    const _newDuration = parseInt($("#lockDurationAmount").val());
+    const _deployer = this.wallets.find((w) => w.label === "Deployer");
+
     const deployed = await this.remittance.deployed();
-    const { setLockDuration, MAX_DURATION } = deployed;
+    const { setLockDuration } = deployed;
 
-    const max_Duration = await MAX_DURATION.call(); // 3153600000;
-    console.log("max_Duration: ", max_Duration);
-    console.log("MAX_DURATION: ", MAX_DURATION);
+    const txObjParams = { from: _deployer.address };
 
-    const newDurationInseconds = parseInt(lockDurationAmountElem.value);
-    console.log("newDurationInseconds", newDurationInseconds);
-
-    if (newDurationInseconds > max_Duration) {
-      throw new Error(`Invalid lock Duration above maximum allowed value [] ${max_Duration} seconds ]`);
-    } else if (newDurationInseconds === 0 || typeof newDurationInseconds == undefined) {
-      throw new Error(`Invalid lock Duration value`);
+    try {
+      await setLockDuration.call(_newDuration, txObjParams);
+    } catch (err) {
+      const errMessage = "Your setLockDuration transaction will fail. Check your input and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
     }
 
-    const _deployer = this.wallets.find((w) => w.label === "Deployer");
-    console.log("deployer address: ", _deployer.address);
-    console.log("this.remittance.setLockDuration ", setLockDuration);
-    const txObj = await setLockDuration.sendTransaction(newDurationInseconds, { from: _deployer.address });
+    const txObj = await setLockDuration(_newDuration, txObjParams).on("transactionHash", (txHash) =>
+      $("#status").html(`setLockDuration transaction on the way : [ ${txHash} ]`)
+    );
 
-    console.log("txObj : ", txObj);
-    lockDurationAmountElem.value = "";
+    await this.updateUI(txObj, "lockDuration");
+    $("#lockDurationAmount").html("");
+    this.showLockupDuration();
+  },
+
+  validateLockDuration: async function () {
+    let hasError = false;
+    if (!$("#lockDurationAmount").val()) {
+      $("#lockDurationAmountError").html("Lock duration is required");
+      hasError = true;
+    }
+    if (parseInt($("#lockDurationAmount").val()) === NaN || $("#lockDurationAmount").val() == 0) {
+      $("#lockDurationAmountError").html("Lock duration is invalid");
+      hasError = true;
+    }
+    return hasError;
+  },
+
+  pauseContract: async function () {
+    const _deployer = this.wallets.find((w) => w.label === "Deployer");
+    const deployed = await this.remittance.deployed();
+    const { pause } = deployed;
+    const txParamsObj = { from: _deployer.address };
+    try {
+      await pause.call(txParamsObj);
+    } catch (err) {
+      const errMessage = "Your pause transaction will fail. Check your balance/account and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    const txObj = await pause(txParamsObj).on("", (txHash) =>
+      $("#status").html(`Your pause transaction on the way : [ ${txHash} ]`)
+    );
+
+    await this.updateUI(txObj, "pause");
+    await this.setStatus("The Contract is Currently paused!", "pause");
+  },
+
+  resumeContract: async function () {
+    const _deployer = this.wallets.find((w) => w.label === "Deployer");
+    const deployed = await this.remittance.deployed();
+    const { unpause } = deployed;
+    const txParamsObj = { from: _deployer.address };
+    try {
+      await unpause.call(txParamsObj);
+    } catch (err) {
+      const errMessage = "Your unpause transaction will fail. Check your balance/account and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    const txObj = await unpause(txParamsObj).on("", (txHash) =>
+      $("#status").html(`Your resume transaction is on the way : [ ${txHash} ]`)
+    );
+
+    await this.updateUI(txObj, "resume");
+    await this.setStatus("", "");
   },
 
   // DISPLAY METHODS
@@ -233,13 +291,13 @@ const App = {
     if (!txObj.receipt.status) {
       console.error("Wrong status");
       console.error(txObj.receipt);
-      $("#status").html(`There was an error in the ${txName} transaction execution, status not 1`).css("background", "#FF5733");
+      await this.setStatus(`There was an error in the ${txName} transaction execution, status not 1`, `error`);
     } else if (txObj.receipt.logs.length == 0) {
       console.error("Empty logs");
       console.error(txObj.receipt);
-      $("#status").html(`There was an error in the ${txName} transaction, missing expected event`).css("background", "#FF5733");
+      await this.setStatus(`There was an error in the ${txName} transaction, missing expected event`, `error`);
     } else {
-      $("#status").html(`${txName} transaction executed`);
+      await this.setStatus(`${txName} transaction executed`, ``);
     }
 
     this.showAddressBalances();
@@ -332,8 +390,17 @@ const App = {
   setStatus: function (message, tone) {
     const status = document.getElementById("status");
     //status.addClass("text-danger");
-    message = "DAPP contract working normally";
-    status.innerHTML = message;
+
+    if (tone == "pause") {
+      status.innerHTML = message;
+      $("#status").addClass("alert-danger").removeClass("alert-primary");
+    } else if (tone == "error") {
+      status.innerHTML = message;
+      $("#status").addClass("alert-warning").removeClass("alert-primary");
+    } else {
+      status.innerHTML = "DAPP contract working normally";
+      $("#status").addClass("alert-sucess").removeClass("alert-danger");
+    }
   },
 };
 
