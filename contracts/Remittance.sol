@@ -9,8 +9,8 @@ import "./Pausable.sol";
  */
 contract Remittance is Pausable {
     
-    uint constant DEFAULT_LOCK_DURATION = 432000 seconds; //5 days
-    uint constant MAX_DURATION = 3153600000; //100 years
+    uint constant public DEFAULT_LOCK_DURATION = 432000 seconds; //5 days
+    uint constant public MAX_DURATION = 3153600000; //100 years
     bytes32 NULL_BYTES32 = bytes32(0); 
     
     uint public lockDuration = DEFAULT_LOCK_DURATION;

@@ -11,33 +11,138 @@ const App = {
   remittance: truffleContract(remittanceJson),
 
   start: async function () {
-    const { web3 } = this;
+    const { web3, $ } = this;
     try {
       this.remittance.setProvider(web3.currentProvider);
-      this.setUpApp();
-      this.hello();
-      this.showContractBalance();
+      await this.setUpApp();
     } catch (error) {
       console.log(error);
       console.error("Could not connect to contract or chain.");
     }
   },
 
-  hello: async function () {
+  //CORE METHODS
+  deposit: async function () {},
+
+  validateDeposit: async function () {},
+
+  validateWithdraw: async function () {},
+
+  withdraw: async function () {
     const deployed = await this.remittance.deployed();
-    const num = await deployed.hello.call();
-    this.setStatus(num.toString());
+    const balance = await this.web3.eth.getBalance(deployed.address);
+    console.log("balance: ", balance);
+    console.log("Withdraw btn clicked");
+  },
+
+  withdraw: async function () {},
+
+  refund: async function () {},
+
+  setLockDuration: async function () {
+    const lockDurationAmountElem = document.getElementById("lockDurationAmount");
+    const deployed = await this.remittance.deployed();
+    const { setLockDuration, MAX_DURATION } = deployed;
+
+    const max_Duration = await MAX_DURATION.call(); // 3153600000;
+    console.log("max_Duration: ", max_Duration);
+    console.log("MAX_DURATION: ", MAX_DURATION);
+
+    const newDurationInseconds = parseInt(lockDurationAmountElem.value);
+    console.log("newDurationInseconds", newDurationInseconds);
+
+    if (newDurationInseconds > max_Duration) {
+      throw new Error(`Invalid lock Duration above maximum allowed value [] ${max_Duration} seconds ]`);
+    } else if (newDurationInseconds === 0 || typeof newDurationInseconds == undefined) {
+      throw new Error(`Invalid lock Duration value`);
+    }
+
+    const _deployer = this.wallets.find((w) => w.label === "Deployer");
+    console.log("deployer address: ", _deployer.address);
+    console.log("this.remittance.setLockDuration ", setLockDuration);
+    const txObj = await setLockDuration.sendTransaction(newDurationInseconds, { from: _deployer.address });
+
+    console.log("txObj : ", txObj);
+    lockDurationAmountElem.value = "";
+  },
+
+  // DISPLAY METHODS
+
+  updateUI: async function (txObj, txName) {
+    if (!txObj.receipt.status) {
+      console.error("Wrong status");
+      console.error(txObj.receipt);
+      $("#status").html(`There was an error in the ${txName} transaction execution, status not 1`).css("background", "#FF5733");
+    } else if (txObj.receipt.logs.length == 0) {
+      console.error("Empty logs");
+      console.error(txObj.receipt);
+      $("#status").html(`There was an error in the ${txName} transaction, missing expected event`).css("background", "#FF5733");
+    } else {
+      $("#status").html(`${txName} transaction executed`);
+    }
+
+    this.showAddressBalances();
+    return;
+  },
+
+  showLockupDuration: async function () {
+    const deployed = await this.remittance.deployed();
+    const { lockDuration } = deployed;
+    const lockUpSeconds = await lockDuration.call();
+    const lockupDurationElement = document.getElementById("lockupDuration");
+    lockupDurationElement.innerHTML = this.getLockDurationDisplay(lockUpSeconds);
+  },
+
+  getLockDurationDisplay: function (lockUpSeconds) {
+    const DAY_DIVISOR = 86400;
+    const HOUR_DIVISOR = 3600;
+    const MINUTE_DIVISOR = 60;
+
+    const remainderForHours = lockUpSeconds % DAY_DIVISOR;
+    const dayCount = (lockUpSeconds - remainderForHours) / DAY_DIVISOR;
+
+    const reaminderForMinutes = remainderForHours % HOUR_DIVISOR;
+    const hourCount = (remainderForHours - reaminderForMinutes) / HOUR_DIVISOR;
+
+    const reminderForSeconds = reaminderForMinutes % MINUTE_DIVISOR;
+    const mniuteCount = (reaminderForMinutes - reminderForSeconds) / MINUTE_DIVISOR;
+
+    const days = `${dayCount.toString()} DAYS`;
+    const hrs = hourCount != 0 ? `${hourCount.toString()} HOURS` : ``;
+    const mints = mniuteCount != 0 ? `${mniuteCount.toString()} MINUTES` : ``;
+    const scds = reminderForSeconds != 0 ? `${reminderForSeconds.toString()} SECS` : ``;
+
+    return `${days} ${hrs} ${mints} ${scds}`;
   },
 
   showContractBalance: async function () {
     const deployed = await this.remittance.deployed();
-    const balance = await this.web3.eth.getBalance(deployed.address);
+    const balanceInWei = await this.web3.eth.getBalance(deployed.address);
     const balanceElement = document.getElementById("contractBalance");
-    balanceElement.innerHTML = balance;
+    const balanceInEther = this.web3.utils.fromWei(balanceInWei, "ether");
+    balanceElement.innerHTML = `${parseFloat(balanceInEther).toFixed(4)} ETH`;
   },
 
-  setUpApp: function () {
-    const { web3, wallets } = this;
+  showAddressBalances: async function () {
+    this.wallets.slice(0, 5).map((wallet) => {
+      this.showAddressBalance(wallet);
+    });
+  },
+
+  showAddressBalance: async function (wallet) {
+    if (wallet.i > 5) {
+      throw new Error("Invalid account index");
+    }
+    document.getElementById(`address${wallet.i}`).innerHTML = wallet.address;
+    const balanceInWei = await this.web3.eth.getBalance(wallet.address);
+    document.getElementById(`address${wallet.i}Balance`).innerHTML = this.web3.utils.fromWei(balanceInWei, "ether");
+    document.getElementById(`address${wallet.i}Label`).innerHTML = wallet.label;
+  },
+
+  setUpApp: async function () {
+    const { web3 } = this;
+
+    const labels = ["Deployer", "Depositor", "Remitter", "Troll", "Other"];
 
     web3.eth
       .getAccounts()
@@ -51,14 +156,22 @@ const App = {
       .then((accountList) => {
         for (i = 0; i < 10; i++) {
           let address = accountList[i];
-          wallets.push({ i, address });
+          let label = labels[i];
+          this.wallets.push({ i, address, label });
         }
       })
       .catch(console.error);
+
+    await this.showContractBalance();
+    await this.showAddressBalances();
+    await this.showLockupDuration();
+    await this.setStatus();
   },
 
-  setStatus: function (message) {
+  setStatus: function (message, tone) {
     const status = document.getElementById("status");
+    //status.addClass("text-danger");
+    message = "DAPP contract working normally";
     status.innerHTML = message;
   },
 };
