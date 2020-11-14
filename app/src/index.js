@@ -24,7 +24,7 @@ const App = {
   //CORE METHODS
   deposit: async function () {
     //Validate inputs
-    if (this.validateDeposit()) return;
+    if (await this.validateDeposit()) return;
 
     const gas = 4000000;
     const _depositor = $("#depositSender").val();
@@ -33,7 +33,7 @@ const App = {
     const _amount = $("#depositAmount").val();
 
     const deployed = await this.remittance.deployed();
-    const { deposit, generateSecret, ledger } = deployed;
+    const { deposit, generateSecret } = deployed;
 
     const depositTxParamsObj = {
       from: _depositor,
@@ -97,18 +97,56 @@ const App = {
       $("#depositAmountError").html("Can not deposit zero");
       hasError = true;
     }
-    return !hasError;
+    return hasError;
   },
-  validateWithdraw: async function () {},
+
+  validateWithdraw: async function () {
+    $("#withdrawPasswordError").html("");
+    $("#withdrawerAddressError").html("");
+    let hasError = false;
+
+    if (!$("#withdrawPassword").val()) {
+      $("#withdrawPasswordError").html("Withdraw password is required");
+      hasError = true;
+    }
+
+    if (!$("#withdrawerAddress").val()) {
+      $("#withdrawerAddressError").html("Withdrawe address is missing");
+      hasError = true;
+    }
+
+    return hasError;
+  },
 
   withdraw: async function () {
-    const deployed = await this.remittance.deployed();
-    const balance = await this.web3.eth.getBalance(deployed.address);
-    console.log("balance: ", balance);
-    console.log("Withdraw btn clicked");
-  },
+    console.log("withdraw ");
+    //Validate input
+    if (await this.validateWithdraw()) return;
+    const _password = $("#withdrawPassword").val();
+    const _withdrawer = $("#withdrawerAddress").val();
 
-  withdraw: async function () {},
+    const deployed = await this.remittance.deployed();
+    const { withdraw } = deployed;
+    const withdrawTxParamsObj = { from: _withdrawer };
+
+    try {
+      //Simulate withdrawal
+      await withdraw.call(_password, withdrawTxParamsObj);
+    } catch (err) {
+      const errMessage = "Your Withdraw transaction will fail. Check your inputs and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    //Send withdrawal transaction
+    const txObj = await withdraw(_password, withdrawTxParamsObj).on("transactionHash", (txHash) =>
+      $("#status").html(`Withdraw transaction on the way : [ ${txHash} ]`)
+    );
+
+    await this.updateUI(txObj, "Withdraw");
+    $("#withdrawPassword").html("");
+  },
 
   refund: async function () {},
 
