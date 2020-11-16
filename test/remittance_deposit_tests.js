@@ -19,9 +19,8 @@ contract("Remittance", (accounts) => {
   const remitter = accounts[2];
   const _sent = 20;
   const gas = 4000000;
+  const _depositLockDuration = 86400;
   const _randomRemitKey = "0x72631ef6a9de404af013211acf2bec80a2d1c9c0b799846fea429a55bf864ee8";
-  const _randomSecretHash = "0xaf01329a52180a2d1c9726311ac4c0b79f2becef6a9de4bf864ee809846fea45";
-  const _randomRefundSecret = "0x6311ac4c0b7946fea45f2becef6a9de4baf01329a52180a2d1c972f864ee8098";
   const _nullHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
   describe("deposit tests", () => {
@@ -30,109 +29,115 @@ contract("Remittance", (accounts) => {
     });
 
     it("should emit an event  with correct arguments", async () => {
-      const _deposited = 25;
       const depositTxObj = await remittance.contract.methods
-        .deposit(_randomSecretHash, _randomRemitKey, _randomRefundSecret)
-        .send({ from: sender, value: _deposited, gas: gas });
+        .deposit(_randomRemitKey, _depositLockDuration)
+        .send({ from: sender, value: _sent, gas: gas });
+
+      var depositBlock = await web3.eth.getBlock(depositTxObj.blockNumber);
+      const expectedDeadline = depositBlock.timestamp + _depositLockDuration;
 
       const eventObj = depositTxObj.events.LogDeposited;
       assert.isDefined(eventObj, "event not emitted");
-      assert.isTrue(eventObj.event === "LogDeposited", "correct event not emitted");
+      assert.strictEqual(eventObj.event, "LogDeposited", "correct event not emitted");
 
       const eventArgs = eventObj.returnValues;
-      assert.isTrue(eventArgs.depositor === sender, "LogDeposited event depositor argument is incorrect");
-      assert.isTrue(eventArgs.deposited === _deposited.toString(), "LogDeposited event deposited argument is incorrect");
-      assert.isTrue(eventArgs.secret === _randomSecretHash, "LogDeposited event secret argument is incorrect");
-      assert.isTrue(eventArgs.key === _randomRemitKey, "LogDeposited event key argument is incorrect");
+      assert.strictEqual(eventArgs.depositor, sender, "LogDeposited event depositor argument is incorrect");
+      assert.strictEqual(eventArgs.deposited, _sent.toString(), "LogDeposited event deposited argument is incorrect");
+      assert.strictEqual(eventArgs.key, _randomRemitKey, "LogDeposited event key argument is incorrect");
+
+      assert.strictEqual(
+        parseInt(eventArgs.withdrawalDeadline),
+        expectedDeadline,
+        "LogDeposited event withdrawalDeadline argument is incorrect"
+      );
     });
 
     it("should record sent amount as owed in storage", async () => {
       const expectedAmount = new BN(_sent);
-      const expectedSecret = _randomSecretHash;
-
       const remitBefore = await remittance.ledger.call(_randomRemitKey);
+
       await remittance.contract.methods
-        .deposit(_randomSecretHash, _randomRemitKey, _randomRefundSecret)
+        .deposit(_randomRemitKey, _depositLockDuration)
         .send({ from: sender, value: _sent, gas: gas });
-
       const remitAfter = await remittance.ledger.call(_randomRemitKey);
-      const actual = remitAfter.amount.sub(remitBefore.amount);
+      const actualAmount = remitAfter.amount.sub(remitBefore.amount);
 
-      expect(actual).to.be.a.bignumber.that.equals(expectedAmount);
-      expect(_randomSecretHash).equals(expectedSecret);
-    });
-
-    it("should revert if given null secret hash", async () => {
-      await truffleAssert.reverts(
-        remittance.contract.methods.deposit(_nullHash, _randomRemitKey, _randomRefundSecret).send({ from: sender, value: 10 }),
-        "Invalid withdrawSecret value"
-      );
+      expect(actualAmount).to.be.a.bignumber.that.equals(expectedAmount);
+      expect(sender).to.equal(remitAfter.depositor);
     });
 
     it("should revert if given null remitkey", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods.deposit(_randomSecretHash, _nullHash, _randomRefundSecret).send({ from: sender, value: 10 }),
+        remittance.contract.methods.deposit(_nullHash, _depositLockDuration).send({ from: sender, value: _sent }),
         "Invalid remitKey value"
       );
     });
 
-    it("should revert if given null refund Secret", async () => {
+    it("should revert if deposit amount is 0", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods.deposit(_randomSecretHash, _randomRemitKey, _nullHash).send({ from: sender, value: 10 }),
-        "Invalid refundSecret value"
+        remittance.contract.methods.deposit(_randomRemitKey, _depositLockDuration).send({ from: sender, value: 0 }),
+        "Invalid minimum deposit amount"
       );
     });
 
-    it("should revert if sent amount is 0", async () => {
+    it("should revert if deposit lock duration is 0", async () => {
+      const minValue = await remittance.MIN_DURATION.call();
       await truffleAssert.reverts(
-        remittance.contract.methods
-          .deposit(_randomSecretHash, _randomRemitKey, _randomRefundSecret)
-          .send({ from: sender, value: 0 }),
-        "Invalid minimum amount"
+        remittance.contract.methods.deposit(_randomRemitKey, minValue).send({ from: sender, value: _sent }),
+        "Invalid minumum lock duration"
       );
     });
 
-    it("should revert if input hashes are identical", async () => {
+    it("should revert if deposit lock duration is above maximum allowed", async () => {
+      const maxValue = await remittance.MAX_DURATION.call();
+      const aboveMaxValue = maxValue + 1;
       await truffleAssert.reverts(
-        remittance.contract.methods
-          .deposit(_randomSecretHash, _randomSecretHash, _randomSecretHash)
-          .send({ from: sender, value: _sent, gas: gas }),
-        "withdrawSecret and refundSecret can not be identical"
+        remittance.contract.methods.deposit(_randomRemitKey, aboveMaxValue).send({ from: sender, value: _sent }),
+        "Invalid maximum lock duration"
+      );
+    });
+
+    it("should revert when given an active deposit key", async () => {
+      remittance.contract.methods.deposit(_randomRemitKey, _depositLockDuration).send({ from: sender, value: _sent });
+
+      await truffleAssert.reverts(
+        remittance.contract.methods.deposit(_randomRemitKey, _depositLockDuration).send({ from: sender, value: _sent, gas: gas }),
+        "Invalid, remit Key has an active deposit"
       );
     });
   });
 
-  describe("active deposit denial test (in steps)", () => {
+  describe("deposit with active/passowrd reuse denial test (in steps)", () => {
     it("should deploy contract first", async () => {
       remittance = await Remittance.new({ from: deployer });
     });
 
     const receiverPassword = "abcdef";
-    let _remitKey_ = "";
-    let _withdrawSecret_ = "";
-    let _refundSecret_ = "";
+    let _key_1 = "";
 
-    it("should generate keys", async () => {
-      const secrets = await remittance.contract.methods.generateSecret(remitter, receiverPassword).call();
-      _remitKey_ = secrets.remitKey;
-      _withdrawSecret_ = secrets.withdrawSecret;
-      _refundSecret_ = secrets.refundSecret;
+    it("should generate key", async () => {
+      _key_1 = await remittance.contract.methods.generateKey(remitter, receiverPassword).call();
     });
 
     it("should deposit first time", async () => {
       const depositTxObj = await remittance.contract.methods
-        .deposit(_withdrawSecret_, _remitKey_, _refundSecret_)
-        .send({ from: sender, value: _sent, gas: gas });
+        .deposit(_key_1, _depositLockDuration)
+        .send({ from: sender, value: _sent });
 
       assert.isDefined(depositTxObj, "deposit transaction did not get mined/executed");
     });
 
+    it("should withdraw first deposit", async () => {
+      const withdrawTxObj = await remittance.contract.methods
+        .withdraw(receiverPassword)
+        .send({ from: remitter, value: 0, gas: gas });
+      assert.isDefined(withdrawTxObj, "withdraw function did not get mined/execute");
+    });
+
     it("should revert when given an active deposit key", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods
-          .deposit(_withdrawSecret_, _remitKey_, _refundSecret_)
-          .send({ from: sender, value: _sent, gas: gas }),
-        "Invalid, remit Key has an active deposit"
+        remittance.contract.methods.deposit(_key_1, _depositLockDuration).send({ from: sender, value: _sent, gas: gas }),
+        "Invalid, Password has previously been used"
       );
     });
   });

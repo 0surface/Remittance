@@ -46,7 +46,7 @@ contract Remittance is Pausable {
      *@params bytes32 key, uint duration
      */
     function deposit(bytes32 remitKey, uint depositLockDuration) public whenNotPaused payable {
-        require(msg.value > 0, "Invalid minimum amount");
+        require(msg.value > 0, "Invalid minimum deposit amount");
         require(remitKey != NULL_BYTES32, "Invalid remitKey value");
         require(depositLockDuration > MIN_DURATION, "Invalid minumum lock duration");        
         require(depositLockDuration < MAX_DURATION, "Invalid maximum lock duration");        

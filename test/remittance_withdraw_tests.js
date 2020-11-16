@@ -6,6 +6,20 @@ const { assert, expect } = chai;
 
 chai.use(require("chai-bn")(BN));
 
+function advanceTime(time) {
+  return new Promise((resolve, reject) => {
+    web3.currentProvider.send(
+      {
+        jsonrpc: "2.0",
+        method: "evm_increaseTime",
+        params: [time],
+        id: new Date().getTime(),
+      },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+  });
+}
+
 contract("Remittance", (accounts) => {
   before(async () => {
     it("TestRPC must have adequate number of addresses", () => {
@@ -18,13 +32,14 @@ contract("Remittance", (accounts) => {
   const sender = accounts[1];
   const remitter = accounts[2];
   const _randomAddress = accounts[3];
+  const _withdrawalDeadline = 86400;
   const gas = 4000000;
   const _sent = 20;
   const receiverPassword = "abcdef";
-  const expkey = web3.utils.soliditySha3({ type: "string", value: receiverPassword }, { type: "address", value: remitter });
-  const expW = web3.utils.soliditySha3({ type: "address", value: remitter }, { type: "string", value: receiverPassword });
-  const expRefund = web3.utils.soliditySha3({ type: "address", value: sender }, { type: "string", value: receiverPassword });
-  const _nullHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
+  const expectedRemitkey = web3.utils.soliditySha3(
+    { type: "string", value: receiverPassword },
+    { type: "address", value: remitter }
+  );
 
   describe("withdraw tests", () => {
     beforeEach("deploy a fresh contract, generate secrets and deposit money", async () => {
@@ -32,16 +47,12 @@ contract("Remittance", (accounts) => {
       remittance = await Remittance.new({ from: deployer });
 
       //Act - generateSecret
-      const secrets = await remittance.contract.methods
-        .generateSecret(remitter, receiverPassword)
-        .call({ from: sender, gas: gas });
-      assert.strictEqual(secrets.remitKey, expkey, "did not generate expected remitter key");
-      assert.strictEqual(secrets.withdrawSecret, expW, "did not generate expected withdraw secret");
-      assert.strictEqual(secrets.refundSecret, expRefund, "did not generate expected refund secret");
+      const remitKey = await remittance.contract.methods.generateKey(remitter, receiverPassword).call({ from: sender, gas: gas });
+      assert.strictEqual(remitKey, expectedRemitkey, "did not generate expected remitter key");
 
       //Act - Deposit
       const depositTxObj = await remittance.contract.methods
-        .deposit(secrets.withdrawSecret, secrets.remitKey, secrets.refundSecret)
+        .deposit(remitKey, _withdrawalDeadline)
         .send({ from: sender, value: _sent, gas: gas });
       assert.isDefined(depositTxObj, "deposit function did not get mined/execute");
     });
@@ -62,7 +73,7 @@ contract("Remittance", (accounts) => {
 
     it("should clear ledger after successful withdrawal", async () => {
       //Arrange
-      const remitBefore = await remittance.ledger.call(expkey);
+      const remitBefore = await remittance.ledger.call(expectedRemitkey);
 
       //Act
       const withdrawTxObj = await remittance.contract.methods
@@ -71,14 +82,12 @@ contract("Remittance", (accounts) => {
       assert.isDefined(withdrawTxObj, "withdraw function did not get mined/executed");
 
       //Assert
-      const remitAfter = await remittance.ledger.call(expkey);
+      const remitAfter = await remittance.ledger.call(expectedRemitkey);
       const zero = new BN(0);
 
       assert.notEqual(remitBefore.amount, remitAfter.amount, "ledger amount not cleared after withdrawl");
       expect(remitAfter.amount).to.be.a.bignumber.that.equals(zero);
       expect(remitAfter.deadline).to.be.a.bignumber.that.equals(zero);
-      assert.strictEqual(remitAfter.withdrawHash, _nullHash, "ledger withdrawHash not cleared after withdrawl");
-      assert.strictEqual(remitAfter.refundHash, _nullHash, "ledger refundHash not cleared after withdrawl");
     });
 
     it("should emit an event with correct arguments", async () => {
@@ -97,6 +106,7 @@ contract("Remittance", (accounts) => {
         eventObj.returnValues.receiverPassword === receiverPassword,
         "LogWithdrawn event receiverPassword argument is incorrect"
       );
+      assert.isTrue(eventObj.returnValues.key === expectedRemitkey, "LogWithdrawn event withdrawn argument is incorrect");
     });
 
     it("should pay owed money when receiver password is correct", async () => {
@@ -130,6 +140,15 @@ contract("Remittance", (accounts) => {
       await truffleAssert.reverts(
         remittance.contract.methods.withdraw("").send({ from: remitter, value: 0, gas: gas }),
         "receiverPassword can not be empty"
+      );
+    });
+
+    it("should revert when withdrawal deadline has passed", async () => {
+      advanceTime(_withdrawalDeadline + 1);
+
+      await truffleAssert.reverts(
+        remittance.contract.methods.withdraw(receiverPassword).send({ from: remitter, value: 0, gas: gas }),
+        "withdrawal period has expired"
       );
     });
 
