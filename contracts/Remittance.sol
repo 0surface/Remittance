@@ -5,104 +5,66 @@ import "./Pausable.sol";
 
 /*
  * @title Remittance
- * @dev Implements an off-line payment settlement system via an intermediary
+ * @dev Implements an payment settlement system via an intermediary
  */
 contract Remittance is Pausable {
-    
-    uint constant public DEFAULT_LOCK_DURATION = 432000 seconds; //5 days
+      
     uint constant public MAX_DURATION = 3153600000; //100 years
+    uint constant public MIN_DURATION = 0;
     bytes32 NULL_BYTES32 = bytes32(0); 
-    
-    uint public lockDuration = DEFAULT_LOCK_DURATION;
 
-    struct Remit {
-        bytes32 withdrawHash;
-        bytes32 refundHash;
+    struct Remit {        
         uint amount;
-        uint deadline; 
+        uint deadline;
+        address depositor;
     }
 
     mapping(bytes32 => Remit) public ledger;
 
-    modifier remitInputsAreValid(address remitterAddress, string memory receiverPassword) {
-        require(remitterAddress != address(0), "remitter address can not be null");
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        _;
-    }
-
-    event LogDeposited(address indexed depositor, uint deposited, bytes32 secret, bytes32 key, bytes32 refundHash );
-    event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword);
-    event LogLockDurationSet(address indexed owner, uint oldDuration, uint newDuration);
-    event LogRefund(address indexed refundee, uint amount, address  remitterAddress, string receiverPassword);
+    event LogDeposited(address indexed depositor, uint deposited, bytes32 key, uint withdrawalDeadline);
+    event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword, bytes32 key);    
+    event LogRefund(address indexed refundee, uint refunded, bytes32 key);
 
     constructor() { }
-
-    /*
-    *@dev set the lockDuration value
-    *@param uint
-    */
-    function setLockDuration(uint newDuration) onlyOwner whenNotPaused public {
-        require(newDuration > 0, "Invalid minumum lock duration");        
-        require(newDuration < MAX_DURATION, "Invalid maximum lock duration");
-        uint _oldValue = lockDuration;
-        lockDuration = newDuration;
-        emit LogLockDurationSet(msg.sender, _oldValue, newDuration);
-    }        
-
     /*
     @dev generates keccak256 hash from params
     @param non null address
-    @param non-empty string values
+    @param non-empty string value
      */
-    function generateSecret(address remitterAddress, string memory receiverPassword) 
+    function generateKey(address remitterAddress, string memory receiverPassword) 
         view public 
         whenNotPaused
-        remitInputsAreValid(remitterAddress, receiverPassword)
-        returns(bytes32 withdrawSecret, bytes32 remitKey, bytes32 refundSecret) 
+        returns(bytes32 remitKey) 
     {   
-        return (generateSecretHash(remitterAddress, receiverPassword),
-                generateKeyHash(receiverPassword, remitterAddress),
-                generateSecretHash(msg.sender, receiverPassword));
-    }   
-
-    /*
-     *@dev generates keccak256 hash from string and address
-     */
-    function generateKeyHash(string memory _password, address _address) 
-        pure private returns (bytes32 keyHash){
-        return keccak256(abi.encodePacked(_password, _address));
-    }
-
-    /*
-     *@dev generates keccak256 hash from address and string
-     */
-    function generateSecretHash(address _address, string memory _password) 
-        pure private returns (bytes32 secretHash) {
-        return keccak256(abi.encodePacked(_address, _password));
-    }
+        require(remitterAddress != address(0), "remitter address can not be null");
+        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
+        return keccak256(abi.encodePacked(receiverPassword, remitterAddress));
+    }    
 
     /*
      *@dev deposit value to contract
-     *@params bytes32
+     *@params bytes32 key, uint duration
      */
-    function deposit(bytes32 withdrawSecret, bytes32 remitKey, bytes32 refundSecret) public whenNotPaused payable {
-        require(msg.value > 0, "Invalid minimum amount");  
-        require(withdrawSecret != NULL_BYTES32, "Invalid withdrawSecret value");
+    function deposit(bytes32 remitKey, uint depositLockDuration) public whenNotPaused payable {
+        require(msg.value > 0, "Invalid minimum amount");
         require(remitKey != NULL_BYTES32, "Invalid remitKey value");
-        require(refundSecret != NULL_BYTES32, "Invalid refundSecret value");
-        require(withdrawSecret != refundSecret, "withdrawSecret and refundSecret can not be identical");
+        require(depositLockDuration > MIN_DURATION, "Invalid minumum lock duration");        
+        require(depositLockDuration < MAX_DURATION, "Invalid maximum lock duration");        
 
         //SLOAD
-        require(ledger[remitKey].amount == 0, "Invalid, remit Key has an active deposit");        
-        
-        //SSTORE
+        Remit memory entry = ledger[remitKey];
+        require(entry.amount == 0, "Invalid, remit Key has an active deposit"); 
+        require(entry.depositor == address(0), "Invalid, Password has previously been used");
+               
+        uint withdrawalDeadline = block.timestamp + depositLockDuration;
+
+         //SSTORE
         ledger[remitKey] = Remit({ 
-            withdrawHash: withdrawSecret, 
-            refundHash: refundSecret, 
+            depositor: msg.sender, 
             amount: msg.value, 
-            deadline: (block.timestamp + lockDuration) 
+            deadline: withdrawalDeadline
         });
-        emit LogDeposited(msg.sender, msg.value, withdrawSecret, remitKey, refundSecret);
+        emit LogDeposited(msg.sender, msg.value, remitKey, withdrawalDeadline);
     }
 
     /*
@@ -114,53 +76,43 @@ contract Remittance is Pausable {
         external 
     {   
         require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        bytes32 _ledgerKey = generateKeyHash(receiverPassword, msg.sender);
+        bytes32 _ledgerKey = generateKey(msg.sender, receiverPassword);
 
         //SLOAD
         Remit memory entry = ledger[_ledgerKey];
         uint _amount = entry.amount;
 
         require(_amount != 0, "Caller is not owed a withdrawal");
-        require(generateSecretHash(msg.sender, receiverPassword) == entry.withdrawHash, "receiverPassword is incorrect");
+        require(block.timestamp < entry.deadline, "withdrawal period has expired");
 
         //SSTORE
-        ledger[_ledgerKey] = Remit({ 
-            withdrawHash: "", 
-            refundHash: "", 
-            amount: 0, 
-            deadline: 0 
-        });
+        ledger[_ledgerKey].amount = 0;
+        ledger[_ledgerKey].deadline = 0;
         
-        emit LogWithdrawal(msg.sender, _amount, receiverPassword);
+        emit LogWithdrawal(msg.sender, _amount, receiverPassword,_ledgerKey);
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "withdraw failed");        
     }
 
-    function refund(address remitterAddress, string memory receiverPassword)
+    function refund(bytes32 remitKey)
         whenNotPaused
-        remitInputsAreValid(remitterAddress, receiverPassword)
         external 
-    {
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        bytes32 _ledgerKey = generateKeyHash(receiverPassword, remitterAddress);
+    {        
+        require(remitKey != NULL_BYTES32, "Invalid remitKey value");        
          
         //SLOAD
-        Remit memory entry = ledger[_ledgerKey];
+        Remit memory entry = ledger[remitKey];
         uint _amount = entry.amount;
-
+        
+        require(entry.depositor == msg.sender, "Caller is not depositor");
         require(_amount != 0, "Caller is not owed a refund");
-        require(generateSecretHash(msg.sender, receiverPassword) == entry.refundHash, "receiverPassword is incorrect");
-        require(block.timestamp > entry.deadline, "deposit is not yet eligible for refund");
+        require(block.timestamp > entry.deadline, "Deposit is not yet eligible for refund");
 
         //SSTORE
-        ledger[_ledgerKey] = Remit({ 
-            withdrawHash: "", 
-            refundHash: "", 
-            amount: 0, 
-            deadline: 0 
-        });
+        ledger[remitKey].amount = 0;
+        ledger[remitKey].deadline = 0;
         
-        emit LogRefund(msg.sender, _amount, remitterAddress, receiverPassword);
+        emit LogRefund(msg.sender, _amount, remitKey);
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "refund failed");
     }
