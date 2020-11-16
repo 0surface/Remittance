@@ -32,8 +32,8 @@
           </span>
         </div>    
         <div class="col-sm-3">
-          <span class="badge badge-pill badge-secondary statusText">Refund Lock Period: 
-            <span id ="lockupDuration"></span>            
+          <span class="badge badge-pill badge-secondary statusText">Status:
+            <span id ="contractStatus"></span>            
           </span>
         </div>        
     </section>
@@ -72,6 +72,11 @@
                   <input type="password" class="form-control" id="depositPassword" aria-describedby="receiver2Help" aria-placeholder="Second receiver" placeholder="Password">
                   <small id="depositPasswordHelp" class="form-text text-info"></small>
                   <small id="depositPasswordError" class="form-text text-danger"></small>
+                </div> 
+                <div class="form-group">                    
+                  <input type="text" class="form-control" id="depositLockDuration" aria-describedby="depositLockDurationHelp" aria-placeholder="86400" placeholder="Deposit Lock Duration in seconds">
+                  <small id="depositLockDurationHelp" class="form-text text-info"></small>
+                  <small id="depositLockDurationError" class="form-text text-danger"></small>
                 </div>                    
                 <div class="form-group">                    
                   <input type="text" class="form-control" id="depositAmount" aria-describedby="amountHelp" aria-placeholder="42.10" placeholder="Amount">
@@ -120,16 +125,7 @@
               <button class="btn btn-lg btn-block btn-info" id="btnWithdraw" onclick="App.refund()">Refund</a>
             </section>
           </div>
-          <div class="tab-pane fade" id="list-settings" role="tabpanel" aria-labelledby="list-settings-list">
-            <section id="lockDurationForm" style="width:80%">
-              <div class="sectionHeader mb-4 box-shadow "><h4 class="font-weight-normal">Change Refund Deadline</h4></div>
-              <div class="form-group">                    
-                <input type="text" class="form-control" id="lockDurationAmount" aria-describedby="lockDurationHelp" aria-placeholder="4210" placeholder="Duration in seconds">
-                <small id="lockDurationAmountHelp" class="form-text text-info"></small>
-                <small id="lockDurationAmountError" class="form-text text-danger"></small>
-              </div> 
-              <button class="btn btn-lg btn-block btn-info" id="btnDurationChange" onclick="App.setLockDuration()">Change</a> 
-            </section>
+          <div class="tab-pane fade" id="list-settings" role="tabpanel" aria-labelledby="list-settings-list">            
             <hr>
             <section class="row"  style="width:80%">
               <hr>

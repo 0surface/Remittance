@@ -31,9 +31,10 @@ const App = {
     const _remitter = $("#depositRemitter").val();
     const _password = $("#depositPassword").val();
     const _amount = $("#depositAmount").val();
+    const _refundLockDuration = $("#depositLockDuration").val();
 
     const deployed = await this.remittance.deployed();
-    const { deposit, generateSecret } = deployed;
+    const { deposit, generateKey } = deployed;
 
     const depositTxParamsObj = {
       from: _depositor,
@@ -41,13 +42,13 @@ const App = {
       gas: gas,
     };
 
-    //Generate secrets
-    const secretTxObj = await generateSecret(_remitter, _password, { from: _depositor });
-    const { withdrawSecret, remitKey, refundSecret } = secretTxObj;
+    //Generate key
+    const remitKey = await generateKey(_remitter, _password, { from: _depositor });
+    console.log("remitKey", remitKey);
 
     try {
       //Simulate transaction
-      await deposit.call(withdrawSecret, remitKey, refundSecret, depositTxParamsObj);
+      await deposit.call(remitKey, _refundLockDuration, depositTxParamsObj);
     } catch (err) {
       const errMessage = "The Deposit transaction will fail. Check your inputs and try again.";
       $("#status").html(errMessage);
@@ -56,7 +57,7 @@ const App = {
     }
 
     //send deposit transaction
-    const txObj = await deposit(withdrawSecret, remitKey, refundSecret, depositTxParamsObj).on("transactionHash", (txHash) =>
+    const txObj = await deposit(remitKey, _refundLockDuration, depositTxParamsObj).on("transactionHash", (txHash) =>
       $("#status").html(`Deposit transaction on the way : [ ${txHash} ]`)
     );
 
@@ -65,6 +66,7 @@ const App = {
     $("#depositRemitter").html("");
     $("#depositPassword").html("");
     $("#depositAmount").html("");
+    $("#depositLockDuration").html("");
 
     //UpdateUI & balances table
     this.updateUI(txObj, "Deposit");
@@ -75,6 +77,7 @@ const App = {
     $("#depositRemitterError").html("");
     $("#depositPasswordError").html("");
     $("#depositAmountError").html("");
+    $("#depositLockDurationError").html("");
     let hasError = false;
 
     if (!$("#depositSender").val()) {
@@ -95,6 +98,10 @@ const App = {
     }
     if ($("#depositAmount").val() == 0) {
       $("#depositAmountError").html("Can not deposit zero");
+      hasError = true;
+    }
+    if ($("#depositLockDuration").val() == 0) {
+      $("#depositLockDurationError").html("Can not set lock duration to 0");
       hasError = true;
     }
     return hasError;
@@ -155,11 +162,15 @@ const App = {
     const _password = $("#refundPassword").val();
 
     const deployed = await this.remittance.deployed();
-    const { refund } = deployed;
+    const { refund, generateKey } = deployed;
     const refundTxParamsObj = { from: _depositorAddress };
 
+    //Generate key
+    //NOTE: In live production, this call should be made to a secure API, not to the smart Contract
+    const remitKey = await generateKey(_remitterAddress, _password, { from: _depositorAddress });
+
     try {
-      await refund.call(_remitterAddress, _password, refundTxParamsObj);
+      await refund.call(remitKey, refundTxParamsObj);
     } catch (err) {
       const errMessage = "Your Refund transaction will fail. Check your inputs and try again.";
       $("#status").html(errMessage);
@@ -167,7 +178,7 @@ const App = {
       throw new Error(errMessage);
     }
 
-    const txObj = await refund(_remitterAddress, _password, refundTxParamsObj).on("transactionHash", (txHash) =>
+    const txObj = await refund(remitKey, refundTxParamsObj).on("transactionHash", (txHash) =>
       $("#status").html(`Refund transaction on the way : [ ${txHash} ]`)
     );
 
@@ -200,47 +211,6 @@ const App = {
     return hasError;
   },
 
-  setLockDuration: async function () {
-    if (await this.validateLockDuration()) return;
-    const _newDuration = parseInt($("#lockDurationAmount").val());
-    const _deployer = this.wallets.find((w) => w.label === "Deployer");
-
-    const deployed = await this.remittance.deployed();
-    const { setLockDuration } = deployed;
-
-    const txObjParams = { from: _deployer.address };
-
-    try {
-      await setLockDuration.call(_newDuration, txObjParams);
-    } catch (err) {
-      const errMessage = "Your setLockDuration transaction will fail. Check your input and try again.";
-      $("#status").html(errMessage);
-      console.error(err);
-      throw new Error(errMessage);
-    }
-
-    const txObj = await setLockDuration(_newDuration, txObjParams).on("transactionHash", (txHash) =>
-      $("#status").html(`setLockDuration transaction on the way : [ ${txHash} ]`)
-    );
-
-    await this.updateUI(txObj, "lockDuration");
-    $("#lockDurationAmount").html("");
-    this.showLockupDuration();
-  },
-
-  validateLockDuration: async function () {
-    let hasError = false;
-    if (!$("#lockDurationAmount").val()) {
-      $("#lockDurationAmountError").html("Lock duration is required");
-      hasError = true;
-    }
-    if (parseInt($("#lockDurationAmount").val()) === NaN || $("#lockDurationAmount").val() == 0) {
-      $("#lockDurationAmountError").html("Lock duration is invalid");
-      hasError = true;
-    }
-    return hasError;
-  },
-
   pauseContract: async function () {
     const _deployer = this.wallets.find((w) => w.label === "Deployer");
     const deployed = await this.remittance.deployed();
@@ -261,6 +231,7 @@ const App = {
 
     await this.updateUI(txObj, "pause");
     await this.setStatus("The Contract is Currently paused!", "pause");
+    await this.showContractStatus();
   },
 
   resumeContract: async function () {
@@ -283,6 +254,7 @@ const App = {
 
     await this.updateUI(txObj, "resume");
     await this.setStatus("", "");
+    await this.showContractStatus();
   },
 
   // DISPLAY METHODS
@@ -304,42 +276,24 @@ const App = {
     return;
   },
 
-  showLockupDuration: async function () {
-    const deployed = await this.remittance.deployed();
-    const { lockDuration } = deployed;
-    const lockUpSeconds = await lockDuration.call();
-    const lockupDurationElement = document.getElementById("lockupDuration");
-    lockupDurationElement.innerHTML = this.getLockDurationDisplay(lockUpSeconds);
-  },
-
-  getLockDurationDisplay: function (lockUpSeconds) {
-    const DAY_DIVISOR = 86400;
-    const HOUR_DIVISOR = 3600;
-    const MINUTE_DIVISOR = 60;
-
-    const remainderForHours = lockUpSeconds % DAY_DIVISOR;
-    const dayCount = (lockUpSeconds - remainderForHours) / DAY_DIVISOR;
-
-    const reaminderForMinutes = remainderForHours % HOUR_DIVISOR;
-    const hourCount = (remainderForHours - reaminderForMinutes) / HOUR_DIVISOR;
-
-    const reminderForSeconds = reaminderForMinutes % MINUTE_DIVISOR;
-    const mniuteCount = (reaminderForMinutes - reminderForSeconds) / MINUTE_DIVISOR;
-
-    const days = `${dayCount.toString()} DAYS`;
-    const hrs = hourCount != 0 ? `${hourCount.toString()} HOURS` : ``;
-    const mints = mniuteCount != 0 ? `${mniuteCount.toString()} MINUTES` : ``;
-    const scds = reminderForSeconds != 0 ? `${reminderForSeconds.toString()} SECS` : ``;
-
-    return `${days} ${hrs} ${mints} ${scds}`;
-  },
-
   showContractBalance: async function () {
     const deployed = await this.remittance.deployed();
     const balanceInWei = await this.web3.eth.getBalance(deployed.address);
     const balanceElement = document.getElementById("contractBalance");
     const balanceInEther = this.web3.utils.fromWei(balanceInWei, "ether");
     balanceElement.innerHTML = `${parseFloat(balanceInEther).toFixed(4)} ETH`;
+  },
+
+  showContractStatus: async function () {
+    const deployed = await this.remittance.deployed();
+    const paused = await deployed.paused.call();
+    $("#contractStatus").html(paused ? "(!) PAUSED (!)" : "OK");
+
+    if (paused) {
+      $("#contractStatus").css("color", "red");
+    } else {
+      $("#contractStatus").css("color", "green");
+    }
   },
 
   showAddressBalances: async function () {
@@ -383,7 +337,7 @@ const App = {
 
     await this.showContractBalance();
     await this.showAddressBalances();
-    await this.showLockupDuration();
+    await this.showContractStatus();
     await this.setStatus();
   },
 
