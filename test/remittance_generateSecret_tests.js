@@ -6,75 +6,57 @@ const { assert, expect } = chai;
 contract("Remittance", (accounts) => {
   before(async () => {
     it("TestRPC must have adequate number of addresses", () => {
-      assert.isAtLeast(accounts.length, 4, "Test has enough addresses");
+      assert.isAtLeast(accounts.length, 2, "Test has enough addresses");
     });
   });
 
   let remittance;
   const deployer = accounts[0];
   const sender = accounts[1];
-  const handler = accounts[2];
-  const randomAddress = accounts[3];
+  const remitter = accounts[2];
   const nullAddress = "0x0000000000000000000000000000000000000000";
+  const receiverPassword = "abcdef";
+  const expectedremitKey = web3.utils.soliditySha3(
+    { type: "string", value: receiverPassword },
+    { type: "address", value: remitter }
+  );
+  const expectedWithdrawSecret = web3.utils.soliditySha3(
+    { type: "address", value: remitter },
+    { type: "string", value: receiverPassword }
+  );
+  const expectedRefundSecret = web3.utils.soliditySha3(
+    { type: "address", value: sender },
+    { type: "string", value: receiverPassword }
+  );
 
-  beforeEach("deploy a fresh contract", async () => {
-    remittance = await Remittance.new({ from: deployer });
-  });
+  describe("Generate Secret tests", () => {
+    beforeEach("deploy a fresh contract", async () => {
+      remittance = await Remittance.new({ from: deployer });
+    });
 
-  it("should generate expected hash value from passwords in order", () => {
-    const handlerPassword = "123456";
-    const receiverPassword = "abcdef";
+    it("should generate expected hash value from passwords in order", () => {
+      return remittance.contract.methods
+        .generateSecret(remitter, receiverPassword)
+        .call({ from: sender })
+        .then((result) => {
+          assert.strictEqual(result.withdrawSecret, expectedWithdrawSecret, "did not generate expected withdraw secret");
+          assert.strictEqual(result.remitKey, expectedremitKey, "did not generate expected remit key");
+          assert.strictEqual(result.refundSecret, expectedRefundSecret, "did not generate expected refund secret");
+        });
+    });
 
-    const expectedHandlerKey = web3.utils.soliditySha3(
-      { type: "address", value: handler },
-      { type: "string", value: handlerPassword }
-    );
-    const expectedHashedSecret = web3.utils.soliditySha3(
-      { type: "bytes32", value: expectedHandlerKey },
-      { type: "string", value: receiverPassword }
-    );
+    it("should revert if given empty string as a password", async () => {
+      await truffleAssert.reverts(
+        remittance.contract.methods.generateSecret(remitter, "").call({ from: sender }),
+        "receiverPassword can not be empty"
+      );
+    });
 
-    return remittance.contract.methods
-      .generateSecret(handler, handlerPassword, receiverPassword)
-      .call()
-      .then((result) => {
-        assert.strictEqual(result.handlerKey, expectedHandlerKey, "did not generate expected handler key");
-        assert.strictEqual(result.hashedSecret, expectedHashedSecret, "did not generate expected hashed secret");
-      });
-  });
-
-  it("should NOT generate expected hash value from passwords out of order", () => {
-    const handlerPassword = "123456";
-    const receiverPassword = "abcdef";
-
-    const expectedHandlerKey = web3.utils.soliditySha3(
-      { type: "address", value: handler },
-      { type: "string", value: handlerPassword }
-    );
-    const expectedHashedSecret = web3.utils.soliditySha3(
-      { type: "bytes32", value: expectedHandlerKey },
-      { type: "string", value: receiverPassword }
-    );
-
-    return remittance.contract.methods
-      .generateSecret(handler, receiverPassword, handlerPassword)
-      .call()
-      .then((result) => {
-        assert.notEqual(result.handlerKey, expectedHandlerKey, "did not generate expected handler key");
-        assert.notEqual(result.hashedSecret, expectedHashedSecret, "did not generate expected hashed secret");
-      });
-  });
-
-  it("should revert if given empty string as a password", async () => {
-    await truffleAssert.reverts(remittance.contract.methods.generateSecret(handler, "", "abcdef").call());
-    await truffleAssert.reverts(remittance.contract.methods.generateSecret(handler, "abcdef", "").call());
-  });
-
-  it("should revert if given identical passwords", async () => {
-    await truffleAssert.reverts(remittance.contract.methods.generateSecret(handler, "abcdef", "abcdef").call());
-  });
-
-  it("should revert if given null address", async () => {
-    await truffleAssert.reverts(remittance.contract.methods.generateSecret(nullAddress, "abcdef", "abcdef").call());
+    it("should revert if given null address", async () => {
+      await truffleAssert.reverts(
+        remittance.contract.methods.generateSecret(nullAddress, "abcdef").call({ from: sender }),
+        "remitter address can not be null"
+      );
+    });
   });
 });
