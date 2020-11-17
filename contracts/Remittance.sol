@@ -96,9 +96,7 @@ contract Remittance is Pausable {
     function refund(bytes32 remitKey)
         whenNotPaused
         external 
-    {        
-        require(remitKey != NULL_BYTES32, "Invalid remitKey value");        
-         
+    { 
         //SLOAD
         Remit memory entry = ledger[remitKey];
         uint _amount = entry.amount;

@@ -54,7 +54,7 @@ contract("Remittance", (accounts) => {
   const expectedKey = web3.utils.soliditySha3({ type: "string", value: password }, { type: "address", value: remitter });
   let _remitKey_ = "";
 
-  describe("refund tests - with ganache-cli running 1 second block time", () => {
+  describe("refund tests", () => {
     beforeEach("deploy a fresh contract, set lockDuration, generateSecret, deposit funds", async () => {
       //Deploy contract
       remittance = await Remittance.new({ from: deployer });
@@ -83,10 +83,7 @@ contract("Remittance", (accounts) => {
       advanceTime(_withdrawalDeadline + 1);
 
       //Act, Assert
-      await truffleAssert.reverts(
-        remittance.contract.methods.refund(_nullKey).send({ from: sender, value: 0 }),
-        "Invalid remitKey value"
-      );
+      await truffleAssert.reverts(remittance.contract.methods.refund(_nullKey).send({ from: sender, value: 0 }));
     });
 
     it("revert if calling address is not owed a refund", async () => {
