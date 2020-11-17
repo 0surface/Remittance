@@ -36,10 +36,7 @@ contract("Remittance", (accounts) => {
   const gas = 4000000;
   const _sent = 20;
   const receiverPassword = "abcdef";
-  const expectedRemitkey = web3.utils.soliditySha3(
-    { type: "string", value: receiverPassword },
-    { type: "address", value: remitter }
-  );
+  let _remitKey_;
 
   describe("withdraw tests", () => {
     beforeEach("deploy a fresh contract, generate secrets and deposit money", async () => {
@@ -47,12 +44,12 @@ contract("Remittance", (accounts) => {
       remittance = await Remittance.new({ from: deployer });
 
       //Act - generateSecret
-      const remitKey = await remittance.contract.methods.generateKey(remitter, receiverPassword).call({ from: sender, gas: gas });
-      assert.strictEqual(remitKey, expectedRemitkey, "did not generate expected remitter key");
+      _remitKey_ = await remittance.contract.methods.generateKey(remitter, receiverPassword).call({ from: sender, gas: gas });
+      assert.isDefined(_remitKey_, "did not generate remitter key");
 
       //Act - Deposit
       const depositTxObj = await remittance.contract.methods
-        .deposit(remitKey, _withdrawalDeadline)
+        .deposit(_remitKey_, _withdrawalDeadline)
         .send({ from: sender, value: _sent, gas: gas });
       assert.isDefined(depositTxObj, "deposit function did not get mined/execute");
     });
@@ -73,7 +70,7 @@ contract("Remittance", (accounts) => {
 
     it("should clear ledger after successful withdrawal", async () => {
       //Arrange
-      const remitBefore = await remittance.ledger.call(expectedRemitkey);
+      const remitBefore = await remittance.ledger.call(_remitKey_);
 
       //Act
       const withdrawTxObj = await remittance.contract.methods
@@ -82,7 +79,7 @@ contract("Remittance", (accounts) => {
       assert.isDefined(withdrawTxObj, "withdraw function did not get mined/executed");
 
       //Assert
-      const remitAfter = await remittance.ledger.call(expectedRemitkey);
+      const remitAfter = await remittance.ledger.call(_remitKey_);
       const zero = new BN(0);
 
       assert.notEqual(remitBefore.amount, remitAfter.amount, "ledger amount not cleared after withdrawl");
@@ -106,7 +103,7 @@ contract("Remittance", (accounts) => {
         eventObj.returnValues.receiverPassword === receiverPassword,
         "LogWithdrawn event receiverPassword argument is incorrect"
       );
-      assert.isTrue(eventObj.returnValues.key === expectedRemitkey, "LogWithdrawn event withdrawn argument is incorrect");
+      assert.isTrue(eventObj.returnValues.key === _remitKey_, "LogWithdrawn event withdrawn argument is incorrect");
     });
 
     it("should pay owed money when receiver password is correct", async () => {
