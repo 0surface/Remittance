@@ -257,6 +257,32 @@ const App = {
     await this.showContractStatus();
   },
 
+  changeOwner: async function () {
+    const _newOwner = $("#newOwner").val();
+    const _currentOwner = $("#currentOwner").val();
+
+    const deployed = await this.remittance.deployed();
+    const { changeOwner } = deployed;
+    const txParamsObj = { from: _currentOwner };
+
+    try {
+      await changeOwner.call(_newOwner, txParamsObj);
+    } catch (err) {
+      const errMessage = "Your Change Contract Owner transaction will fail. Check your account and try again.";
+      $("#status").html(errMessage);
+      console.error(err);
+      throw new Error(errMessage);
+    }
+
+    const txObj = await changeOwner(_newOwner, txParamsObj).on("transactionHash", (txHash) =>
+      $("#status").html(`Your Change Contract Owner transaction is on the way : [ ${txHash} ]`)
+    );
+
+    await this.updateUI(txObj, "ChangeOwner");
+    $("#currentOwner").val("");
+    $("#newOwner").val("");
+  },
+
   // DISPLAY METHODS
 
   updateUI: async function (txObj, txName) {
@@ -323,7 +349,6 @@ const App = {
         if (accounts.length == 0) {
           throw new Error("No accounts with which to transact");
         }
-        //account = accounts[0];
         return accounts;
       })
       .then((accountList) => {
