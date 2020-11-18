@@ -1,5 +1,11 @@
 # Remittance
-A crypto and fiat money transfer system that uses an Ethereum contract
+
+A crypto and fiat money transfer system using an Ethereum contract
 
 ## Build
-- truffle webpack
+
+- truffle unbox webpack
+
+### Test
+
+- `ganache-cli`

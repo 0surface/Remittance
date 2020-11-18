@@ -15,25 +15,11 @@ contract("Remittance", (accounts) => {
   const sender = accounts[1];
   const remitter = accounts[2];
   const _sent = 20;
-  const remitterPassword = "123456";
+  const _depositLockDuration = 86400;
+  const gas = 1000000;
   const receiverPassword = "abcdef";
   const _randomremitKey = "0x72631ef6a9de404af013211acf2bec80a2d1c9c0b799846fea429a55bf864ee8";
-  const _randomWithdrawHash = "0xaf01329a52180a2d1c9726311ac4c0b79f2becef6a9de4bf864ee809846fea45";
-  const _randomRefundSecret = "0x6311ac4c0b7946fea45f2becef6a9de4baf01329a52180a2d1c972f864ee8098";
-  const expectedRemitKey = web3.utils.soliditySha3(
-    { type: "string", value: receiverPassword },
-    { type: "address", value: remitter }
-  );
-  const expectedWithdrawSecret = web3.utils.soliditySha3(
-    { type: "address", value: remitter },
-    { type: "string", value: receiverPassword }
-  );
-  const expectedRefundSecret = web3.utils.soliditySha3(
-    { type: "address", value: sender },
-    { type: "string", value: receiverPassword }
-  );
   let pauseTxObj = {};
-  let generatedSecrets = {};
 
   describe("pause/unpause tests", () => {
     it("revert when unpause is called after deployment", async () => {
@@ -59,16 +45,7 @@ contract("Remittance", (accounts) => {
 
     it("revert when deposit is called", async () => {
       await truffleAssertions.reverts(
-        remittance.contract.methods
-          .deposit(_randomWithdrawHash, _randomremitKey, _randomRefundSecret)
-          .send({ from: sender, value: _sent }),
-        "Contract is paused"
-      );
-    });
-
-    it("revert when withdraw is called when paused after deposit", async () => {
-      await truffleAssertions.reverts(
-        remittance.contract.methods.withdraw(receiverPassword).send({ from: remitter, value: 0 }),
+        remittance.contract.methods.deposit(_randomremitKey, _depositLockDuration).send({ from: sender, value: _sent }),
         "Contract is paused"
       );
     });
@@ -77,21 +54,43 @@ contract("Remittance", (accounts) => {
       await remittance.contract.methods.unpause().send({ from: deployer });
 
       const txObj = await remittance.contract.methods
-        .deposit(_randomWithdrawHash, _randomremitKey, _randomRefundSecret)
-        .send({ from: sender, value: _sent, gas: 1000000 });
+        .deposit(_randomremitKey, _depositLockDuration)
+        .send({ from: sender, value: _sent, gas: gas });
 
       assert.isDefined(txObj.events.LogDeposited, "depoist disabled after contract is unpaused");
     });
 
-    it("should allow withdrawals after being unpaused", async () => {
+    it("revert when withdraw is called when paused after deposit", async () => {
       await remittance.contract.methods.unpause().send({ from: deployer });
 
+      const txObj = await remittance.contract.methods
+        .deposit(_randomremitKey, _depositLockDuration)
+        .send({ from: sender, value: _sent, gas: gas });
+
+      await remittance.contract.methods.pause().send({ from: deployer });
+
+      await truffleAssertions.reverts(
+        remittance.contract.methods.withdraw(receiverPassword).send({ from: remitter, value: 0 }),
+        "Contract is paused"
+      );
+    });
+
+    it("should allow withdrawals after being unpaused", async () => {
+      //Arrange
+      await remittance.contract.methods.unpause().send({ from: deployer });
+      const expectedRemitKey = web3.utils.soliditySha3(
+        { type: "string", value: receiverPassword },
+        { type: "address", value: remitter }
+      );
       const depositTxObj = await remittance.contract.methods
-        .deposit(expectedWithdrawSecret, expectedRemitKey, expectedRefundSecret)
-        .send({ from: sender, value: _sent, gas: 1000000 });
+        .deposit(expectedRemitKey, _depositLockDuration)
+        .send({ from: sender, value: _sent, gas: gas });
       assert.isDefined(depositTxObj, "deposit function did not get mined/execute");
 
+      //Act
       const withdrawTxObj = await remittance.contract.methods.withdraw(receiverPassword).send({ from: remitter, value: 0 });
+
+      //Assert
       assert.isDefined(withdrawTxObj.events.LogWithdrawal, "withdraw disabled after contract is unpaused");
     });
   });
