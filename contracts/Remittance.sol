@@ -2,12 +2,14 @@
 pragma solidity 0.7.0;
 
 import "./Pausable.sol";
+import "./SafeMath.sol";
 
 /*
  * @title Remittance
  * @dev Implements an payment settlement system via an intermediary
  */
 contract Remittance is Pausable {
+    using SafeMath for uint;
       
     uint constant public MAX_DURATION = 3153600000; //100 years
     uint constant public MIN_DURATION = 0;
@@ -55,7 +57,7 @@ contract Remittance is Pausable {
         require(ledger[remitKey].amount == 0, "Invalid, remit Key has an active deposit"); 
         require(ledger[remitKey].depositor == address(0), "Invalid, Password has previously been used");
                
-        uint withdrawalDeadline = block.timestamp + depositLockDuration;
+        uint withdrawalDeadline = (block.timestamp).add(depositLockDuration);
 
          //SSTORE
         ledger[remitKey] = Remit({ 
