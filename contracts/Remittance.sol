@@ -80,17 +80,16 @@ contract Remittance is Pausable {
 
         //SLOAD
         Remit memory entry = ledger[_ledgerKey];
-        uint _amount = entry.amount;
 
-        require(_amount != 0, "Caller is not owed a withdrawal");
+        require(entry.amount != 0, "Caller is not owed a withdrawal");
         require(block.timestamp <= entry.deadline, "withdrawal period has expired");
 
         //SSTORE
         ledger[_ledgerKey].amount = 0;
         ledger[_ledgerKey].deadline = 0;
         
-        emit LogWithdrawal(msg.sender,_ledgerKey, _amount, receiverPassword);
-        (bool success, ) = (msg.sender).call{value: _amount}("");        
+        emit LogWithdrawal(msg.sender,_ledgerKey, entry.amount, receiverPassword);
+        (bool success, ) = (msg.sender).call{value: entry.amount}("");        
         require(success, "withdraw failed");        
     }
 
@@ -100,18 +99,17 @@ contract Remittance is Pausable {
     { 
         //SLOAD
         Remit memory entry = ledger[remitKey];
-        uint _amount = entry.amount;
         
         require(entry.depositor == msg.sender, "Caller is not depositor");
-        require(_amount != 0, "Caller is not owed a refund");
+        require(entry.amount != 0, "Caller is not owed a refund");
         require(block.timestamp > entry.deadline, "Deposit is not yet eligible for refund");
 
         //SSTORE
         ledger[remitKey].amount = 0;
         ledger[remitKey].deadline = 0;
         
-        emit LogRefund(msg.sender, remitKey, _amount);
-        (bool success, ) = (msg.sender).call{value: _amount}("");        
+        emit LogRefund(msg.sender, remitKey, entry.amount);
+        (bool success, ) = (msg.sender).call{value: entry.amount}("");        
         require(success, "refund failed");
     }
 }
