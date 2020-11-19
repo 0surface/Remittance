@@ -78,12 +78,11 @@ contract("Remittance", (accounts) => {
     it("should allow withdrawals after being unpaused", async () => {
       //Arrange
       await remittance.contract.methods.unpause().send({ from: deployer });
-      const expectedRemitKey = web3.utils.soliditySha3(
-        { type: "string", value: receiverPassword },
-        { type: "address", value: remitter }
-      );
+
+      const remitKey = await remittance.contract.methods.generateKey(remitter, receiverPassword).call({ from: sender, gas: gas });
+
       const depositTxObj = await remittance.contract.methods
-        .deposit(expectedRemitKey, _depositLockDuration)
+        .deposit(remitKey, _depositLockDuration)
         .send({ from: sender, value: _sent, gas: gas });
       assert.isDefined(depositTxObj, "deposit function did not get mined/execute");
 

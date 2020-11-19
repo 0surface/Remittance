@@ -11,7 +11,7 @@ contract Remittance is Pausable {
       
     uint constant public MAX_DURATION = 3153600000; //100 years
     uint constant public MIN_DURATION = 0;
-    bytes32 NULL_BYTES32 = bytes32(0); 
+    bytes32 constant NULL_BYTES32 = bytes32(0); 
 
     struct Remit {        
         uint amount;
@@ -38,7 +38,7 @@ contract Remittance is Pausable {
     {   
         require(remitterAddress != address(0), "remitter address can not be null");
         require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
-        return keccak256(abi.encodePacked(receiverPassword, remitterAddress));
+        return keccak256(abi.encodePacked(receiverPassword, remitterAddress, this));
     }    
 
     /*
@@ -74,8 +74,7 @@ contract Remittance is Pausable {
     function withdraw(string memory receiverPassword) 
         whenNotPaused
         external 
-    {   
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
+    { 
         bytes32 _ledgerKey = generateKey(msg.sender, receiverPassword);
 
         //SLOAD
@@ -97,9 +96,7 @@ contract Remittance is Pausable {
     function refund(bytes32 remitKey)
         whenNotPaused
         external 
-    {        
-        require(remitKey != NULL_BYTES32, "Invalid remitKey value");        
-         
+    { 
         //SLOAD
         Remit memory entry = ledger[remitKey];
         uint _amount = entry.amount;

@@ -51,17 +51,16 @@ contract("Remittance", (accounts) => {
   const _withdrawalDeadline = 86400;
   const password = "abcdef";
   const _nullKey = "0x0000000000000000000000000000000000000000000000000000000000000000";
-  const expectedKey = web3.utils.soliditySha3({ type: "string", value: password }, { type: "address", value: remitter });
   let _remitKey_ = "";
 
-  describe("refund tests - with ganache-cli running 1 second block time", () => {
+  describe("refund tests", () => {
     beforeEach("deploy a fresh contract, set lockDuration, generateSecret, deposit funds", async () => {
       //Deploy contract
       remittance = await Remittance.new({ from: deployer });
 
       //Act - generateSecret
       _remitKey_ = await remittance.contract.methods.generateKey(remitter, password).call({ from: sender, gas: gas });
-      assert.strictEqual(_remitKey_, expectedKey, "did not generate expected remitter key");
+      assert.isDefined(_remitKey_, "did not generate expected remitter key");
 
       //Act - Deposit
       const depositTxObj = await remittance.contract.methods
@@ -83,10 +82,7 @@ contract("Remittance", (accounts) => {
       advanceTime(_withdrawalDeadline + 1);
 
       //Act, Assert
-      await truffleAssert.reverts(
-        remittance.contract.methods.refund(_nullKey).send({ from: sender, value: 0 }),
-        "Invalid remitKey value"
-      );
+      await truffleAssert.reverts(remittance.contract.methods.refund(_nullKey).send({ from: sender, value: 0 }));
     });
 
     it("revert if calling address is not owed a refund", async () => {
@@ -113,7 +109,7 @@ contract("Remittance", (accounts) => {
       assert.strictEqual(eventObj.event, "LogRefund", "correct evemt not emitted");
       assert.strictEqual(eventObj.returnValues.refundee, sender, "event refundee argument is incorrect");
       assert.strictEqual(eventObj.returnValues.refunded, _sent.toString(), "event amount argument is incorrect");
-      assert.strictEqual(eventObj.returnValues.key, expectedKey, "event remitKey argument is incorrect");
+      assert.strictEqual(eventObj.returnValues.key, _remitKey_, "event remitKey argument is incorrect");
     });
 
     it("should allow successful refund", async () => {
