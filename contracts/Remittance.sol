@@ -24,7 +24,7 @@ contract Remittance is Pausable {
     mapping(bytes32 => Remit) public ledger;
 
     event LogDeposited(address indexed depositor, bytes32 indexed key, uint deposited, uint withdrawalDeadline);
-    event LogWithdrawal(address indexed withdrawer, bytes32 indexed key, uint withdrawn, string receiverPassword);    
+    event LogWithdrawal(address indexed withdrawer, bytes32 indexed key, uint withdrawn, bytes32 receiverPassword);    
     event LogRefund(address indexed refundee, bytes32 indexed key, uint refunded);
 
     constructor() { }
@@ -33,13 +33,13 @@ contract Remittance is Pausable {
     @param non null address
     @param non-empty string value
      */
-    function generateKey(address remitterAddress, string memory receiverPassword) 
+    function generateKey(address remitterAddress, bytes32 receiverPassword) 
         view public 
         whenNotPaused
         returns(bytes32 remitKey) 
     {   
         require(remitterAddress != address(0), "remitter address can not be null");
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
+        require(receiverPassword != NULL_BYTES32,"receiverPassword can not be empty");
         return keccak256(abi.encodePacked(receiverPassword, remitterAddress, this));
     }    
 
@@ -72,7 +72,7 @@ contract Remittance is Pausable {
     @dev transfer value to caller
     @params string password 
      */
-    function withdraw(string memory receiverPassword) 
+    function withdraw(bytes32 receiverPassword) 
         whenNotPaused
         external 
     { 

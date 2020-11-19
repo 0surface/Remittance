@@ -35,7 +35,7 @@ contract("Remittance", (accounts) => {
   const _withdrawalDeadline = 86400;
   const gas = 4000000;
   const _sent = 20;
-  const receiverPassword = "abcdef";
+  const receiverPassword = web3.utils.fromAscii("abcdef");
   let _remitKey_;
 
   describe("withdraw tests", () => {
@@ -96,14 +96,15 @@ contract("Remittance", (accounts) => {
       //Assert
       const eventObj = withdrawTxObj.events.LogWithdrawal;
       assert.isDefined(eventObj, "event not emitted");
-      assert.isTrue(eventObj.event === "LogWithdrawal", "correct event not emitted");
-      assert.isTrue(eventObj.returnValues.withdrawer === remitter, "LogWithdrawn event withdrawer argument is incorrect");
-      assert.isTrue(eventObj.returnValues.withdrawn === _sent.toString(), "LogWithdrawn event withdrawn argument is incorrect");
-      assert.isTrue(
-        eventObj.returnValues.receiverPassword === receiverPassword,
+      assert.strictEqual(eventObj.event, "LogWithdrawal", "correct event not emitted");
+      assert.strictEqual(eventObj.returnValues.withdrawer, remitter, "LogWithdrawn event withdrawer argument is incorrect");
+      assert.strictEqual(eventObj.returnValues.withdrawn, _sent.toString(), "LogWithdrawn event withdrawn argument is incorrect");
+      assert.strictEqual(
+        web3.utils.hexToUtf8(eventObj.returnValues.receiverPassword),
+        web3.utils.hexToUtf8(receiverPassword),
         "LogWithdrawn event receiverPassword argument is incorrect"
       );
-      assert.isTrue(eventObj.returnValues.key === _remitKey_, "LogWithdrawn event withdrawn argument is incorrect");
+      assert.strictEqual(eventObj.returnValues.key, _remitKey_, "LogWithdrawn event withdrawn argument is incorrect");
     });
 
     it("should pay owed money when receiver password is correct", async () => {
@@ -135,7 +136,7 @@ contract("Remittance", (accounts) => {
 
     it("should revert when given empty password", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods.withdraw("").send({ from: remitter, value: 0, gas: gas }),
+        remittance.contract.methods.withdraw(web3.utils.fromAscii("")).send({ from: remitter, value: 0, gas: gas }),
         "receiverPassword can not be empty"
       );
     });
@@ -158,7 +159,9 @@ contract("Remittance", (accounts) => {
 
     it("should revert if receiver password is incorrect", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods.withdraw("wrongReceiverPassword").send({ from: remitter, value: 0, gas: gas }),
+        remittance.contract.methods
+          .withdraw(web3.utils.fromAscii("wrongReceiverPassword"))
+          .send({ from: remitter, value: 0, gas: gas }),
         "Caller is not owed a withdrawal"
       );
     });
