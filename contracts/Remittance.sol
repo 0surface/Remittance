@@ -21,9 +21,9 @@ contract Remittance is Pausable {
 
     mapping(bytes32 => Remit) public ledger;
 
-    event LogDeposited(address indexed depositor, uint deposited, bytes32 key, uint withdrawalDeadline);
-    event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword, bytes32 key);    
-    event LogRefund(address indexed refundee, uint refunded, bytes32 key);
+    event LogDeposited(address indexed depositor, bytes32 indexed key, uint deposited, uint withdrawalDeadline);
+    event LogWithdrawal(address indexed withdrawer, bytes32 indexed key, uint withdrawn, string receiverPassword);    
+    event LogRefund(address indexed refundee, bytes32 indexed key, uint refunded);
 
     constructor() { }
     /*
@@ -64,7 +64,7 @@ contract Remittance is Pausable {
             amount: msg.value, 
             deadline: withdrawalDeadline
         });
-        emit LogDeposited(msg.sender, msg.value, remitKey, withdrawalDeadline);
+        emit LogDeposited(msg.sender, remitKey, msg.value, withdrawalDeadline);
     }
 
     /*
@@ -88,7 +88,7 @@ contract Remittance is Pausable {
         ledger[_ledgerKey].amount = 0;
         ledger[_ledgerKey].deadline = 0;
         
-        emit LogWithdrawal(msg.sender, _amount, receiverPassword,_ledgerKey);
+        emit LogWithdrawal(msg.sender,_ledgerKey, _amount, receiverPassword);
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "withdraw failed");        
     }
@@ -109,7 +109,7 @@ contract Remittance is Pausable {
         ledger[remitKey].amount = 0;
         ledger[remitKey].deadline = 0;
         
-        emit LogRefund(msg.sender, _amount, remitKey);
+        emit LogRefund(msg.sender, remitKey, _amount);
         (bool success, ) = (msg.sender).call{value: _amount}("");        
         require(success, "refund failed");
     }
