@@ -83,7 +83,7 @@ contract Remittance is Pausable {
         uint _amount = entry.amount;
 
         require(_amount != 0, "Caller is not owed a withdrawal");
-        require(block.timestamp < entry.deadline, "withdrawal period has expired");
+        require(block.timestamp <= entry.deadline, "withdrawal period has expired");
 
         //SSTORE
         ledger[_ledgerKey].amount = 0;
