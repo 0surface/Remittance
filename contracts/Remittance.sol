@@ -51,10 +51,9 @@ contract Remittance is Pausable {
         require(depositLockDuration > MIN_DURATION, "Invalid minumum lock duration");        
         require(depositLockDuration < MAX_DURATION, "Invalid maximum lock duration");        
 
-        //SLOAD
-        Remit memory entry = ledger[remitKey];
-        require(entry.amount == 0, "Invalid, remit Key has an active deposit"); 
-        require(entry.depositor == address(0), "Invalid, Password has previously been used");
+        //SLOAD        
+        require(ledger[remitKey].amount == 0, "Invalid, remit Key has an active deposit"); 
+        require(ledger[remitKey].depositor == address(0), "Invalid, Password has previously been used");
                
         uint withdrawalDeadline = block.timestamp + depositLockDuration;
 
