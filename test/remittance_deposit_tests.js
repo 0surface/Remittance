@@ -112,7 +112,7 @@ contract("Remittance", (accounts) => {
       remittance = await Remittance.new({ from: deployer });
     });
 
-    const receiverPassword = "abcdef";
+    const receiverPassword = web3.utils.fromAscii("abcdef");
     let _key_1 = "";
 
     it("should generate key", async () => {

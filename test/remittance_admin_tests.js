@@ -17,7 +17,7 @@ contract("Remittance", (accounts) => {
   const _sent = 20;
   const _depositLockDuration = 86400;
   const gas = 1000000;
-  const receiverPassword = "abcdef";
+  const receiverPassword = web3.utils.fromAscii("abcdef");
   const _randomremitKey = "0x72631ef6a9de404af013211acf2bec80a2d1c9c0b799846fea429a55bf864ee8";
   let pauseTxObj = {};
 

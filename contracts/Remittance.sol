@@ -2,12 +2,14 @@
 pragma solidity 0.7.0;
 
 import "./Pausable.sol";
+import "./SafeMath.sol";
 
 /*
  * @title Remittance
  * @dev Implements an payment settlement system via an intermediary
  */
 contract Remittance is Pausable {
+    using SafeMath for uint;
       
     uint constant public MAX_DURATION = 3153600000; //100 years
     uint constant public MIN_DURATION = 0;
@@ -21,9 +23,9 @@ contract Remittance is Pausable {
 
     mapping(bytes32 => Remit) public ledger;
 
-    event LogDeposited(address indexed depositor, uint deposited, bytes32 key, uint withdrawalDeadline);
-    event LogWithdrawal(address indexed withdrawer, uint withdrawn, string receiverPassword, bytes32 key);    
-    event LogRefund(address indexed refundee, uint refunded, bytes32 key);
+    event LogDeposited(address indexed depositor, bytes32 indexed key, uint deposited, uint withdrawalDeadline);
+    event LogWithdrawal(address indexed withdrawer, bytes32 indexed key, uint withdrawn, bytes32 receiverPassword);    
+    event LogRefund(address indexed refundee, bytes32 indexed key, uint refunded);
 
     constructor() { }
     /*
@@ -31,13 +33,13 @@ contract Remittance is Pausable {
     @param non null address
     @param non-empty string value
      */
-    function generateKey(address remitterAddress, string memory receiverPassword) 
+    function generateKey(address remitterAddress, bytes32 receiverPassword) 
         view public 
         whenNotPaused
         returns(bytes32 remitKey) 
     {   
         require(remitterAddress != address(0), "remitter address can not be null");
-        require(bytes(receiverPassword).length > 0,"receiverPassword can not be empty");
+        require(receiverPassword != NULL_BYTES32,"receiverPassword can not be empty");
         return keccak256(abi.encodePacked(receiverPassword, remitterAddress, this));
     }    
 
@@ -51,12 +53,11 @@ contract Remittance is Pausable {
         require(depositLockDuration > MIN_DURATION, "Invalid minumum lock duration");        
         require(depositLockDuration < MAX_DURATION, "Invalid maximum lock duration");        
 
-        //SLOAD
-        Remit memory entry = ledger[remitKey];
-        require(entry.amount == 0, "Invalid, remit Key has an active deposit"); 
-        require(entry.depositor == address(0), "Invalid, Password has previously been used");
+        //SLOAD        
+        require(ledger[remitKey].amount == 0, "Invalid, remit Key has an active deposit"); 
+        require(ledger[remitKey].depositor == address(0), "Invalid, Password has previously been used");
                
-        uint withdrawalDeadline = block.timestamp + depositLockDuration;
+        uint withdrawalDeadline = (block.timestamp).add(depositLockDuration);
 
          //SSTORE
         ledger[remitKey] = Remit({ 
@@ -64,14 +65,14 @@ contract Remittance is Pausable {
             amount: msg.value, 
             deadline: withdrawalDeadline
         });
-        emit LogDeposited(msg.sender, msg.value, remitKey, withdrawalDeadline);
+        emit LogDeposited(msg.sender, remitKey, msg.value, withdrawalDeadline);
     }
 
     /*
     @dev transfer value to caller
     @params string password 
      */
-    function withdraw(string memory receiverPassword) 
+    function withdraw(bytes32 receiverPassword) 
         whenNotPaused
         external 
     { 
@@ -79,17 +80,16 @@ contract Remittance is Pausable {
 
         //SLOAD
         Remit memory entry = ledger[_ledgerKey];
-        uint _amount = entry.amount;
 
-        require(_amount != 0, "Caller is not owed a withdrawal");
-        require(block.timestamp < entry.deadline, "withdrawal period has expired");
+        require(entry.amount != 0, "Caller is not owed a withdrawal");
+        require(block.timestamp <= entry.deadline, "withdrawal period has expired");
 
         //SSTORE
         ledger[_ledgerKey].amount = 0;
         ledger[_ledgerKey].deadline = 0;
         
-        emit LogWithdrawal(msg.sender, _amount, receiverPassword,_ledgerKey);
-        (bool success, ) = (msg.sender).call{value: _amount}("");        
+        emit LogWithdrawal(msg.sender,_ledgerKey, entry.amount, receiverPassword);
+        (bool success, ) = (msg.sender).call{value: entry.amount}("");        
         require(success, "withdraw failed");        
     }
 
@@ -99,18 +99,17 @@ contract Remittance is Pausable {
     { 
         //SLOAD
         Remit memory entry = ledger[remitKey];
-        uint _amount = entry.amount;
         
         require(entry.depositor == msg.sender, "Caller is not depositor");
-        require(_amount != 0, "Caller is not owed a refund");
+        require(entry.amount != 0, "Caller is not owed a refund");
         require(block.timestamp > entry.deadline, "Deposit is not yet eligible for refund");
 
         //SSTORE
         ledger[remitKey].amount = 0;
         ledger[remitKey].deadline = 0;
         
-        emit LogRefund(msg.sender, _amount, remitKey);
-        (bool success, ) = (msg.sender).call{value: _amount}("");        
+        emit LogRefund(msg.sender, remitKey, entry.amount);
+        (bool success, ) = (msg.sender).call{value: entry.amount}("");        
         require(success, "refund failed");
     }
 }

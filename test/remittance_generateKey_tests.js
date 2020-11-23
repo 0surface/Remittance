@@ -14,14 +14,15 @@ contract("Remittance", (accounts) => {
   const deployer = accounts[0];
   const sender = accounts[1];
   const remitter = accounts[2];
+  const receiverPassword = web3.utils.fromAscii("abcdef");
+  const emptyString = web3.utils.fromAscii("");
 
   describe("Generate remit key tests", () => {
     beforeEach("deploy a fresh contract", async () => {
       remittance = await Remittance.new({ from: deployer });
     });
 
-    it("should generate expected hash value from passwords in order", () => {
-      const receiverPassword = "abcdef";
+    it("should generate expected hash value from password and address", () => {
       const _nullKey = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
       return remittance.contract.methods
@@ -33,9 +34,23 @@ contract("Remittance", (accounts) => {
         });
     });
 
+    it("should be able to generate remit Key from web3 soliditySha3", async () => {
+      const web3SoliditySha3RemitKey = web3.utils.soliditySha3(
+        { type: "bytes32", value: receiverPassword },
+        { type: "address", value: remitter },
+        { type: "address", value: remittance.address }
+      );
+
+      const soliditykeccak256RemitKey = await remittance.contract.methods
+        .generateKey(remitter, receiverPassword)
+        .call({ from: sender });
+
+      assert.strictEqual(web3SoliditySha3RemitKey, soliditykeccak256RemitKey, "web3 and keccak256 generated keys don't match");
+    });
+
     it("should revert if given empty string as a password", async () => {
       await truffleAssert.reverts(
-        remittance.contract.methods.generateKey(remitter, "").call({ from: sender }),
+        remittance.contract.methods.generateKey(remitter, emptyString).call({ from: sender }),
         "receiverPassword can not be empty"
       );
     });
@@ -44,7 +59,7 @@ contract("Remittance", (accounts) => {
       const nullAddress = "0x0000000000000000000000000000000000000000";
 
       await truffleAssert.reverts(
-        remittance.contract.methods.generateKey(nullAddress, "abcdef").call({ from: sender }),
+        remittance.contract.methods.generateKey(nullAddress, receiverPassword).call({ from: sender }),
         "remitter address can not be null"
       );
     });

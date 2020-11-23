@@ -49,7 +49,7 @@ contract("Remittance", (accounts) => {
   const _sent = 20;
   const gas = 4000000;
   const _withdrawalDeadline = 86400;
-  const password = "abcdef";
+  const password = web3.utils.fromAscii("abcdef");
   const _nullKey = "0x0000000000000000000000000000000000000000000000000000000000000000";
   let _remitKey_ = "";
 
